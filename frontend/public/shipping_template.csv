@@ -1,0 +1,5 @@
+From,,,,,,,To,,,,,,,weight*,weight*,Dimensions*,Dimensions*,Dimensions*,,,,
+First name*,Last name,Address*,Address2,City*,ZIP/Postal code*,Abbreviation*,First name*,Last name,Address*,Address2,City*,ZIP/Postal code*,Abbreviation*,lbs,oz,Length,width,Height,phone num1,phone num2,order no,Item-sku
+Print TTS,,502 W Arrow Hwy,STE P,San Dimas,91773,CA,John Smith,,123 Main Street,Apt 101,Los Angeles,90001,CA,1,0,6,6,6,555-123-4567,555-123-4568,ORD001,SKU-001
+Print TTS,,500 W Foothill Blvd,STE P,Claremont,91711,CA,Jane Doe,,456 Oak Avenue,Suite 200,San Francisco,94102,CA,2,0,12,12,12,555-234-5678,555-234-5679,ORD002,SKU-002
+Print TTS,,1170 Grove Ave,,Ontario,91764,CA,Bob Johnson,,789 Pine Road,Unit 5,San Diego,92101,CA,1,8,4,4,4,555-345-6789,555-345-6790,ORD003,SKU-003
