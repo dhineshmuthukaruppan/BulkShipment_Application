@@ -9,11 +9,13 @@ import { shipmentService } from '../../services/shipmentService';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { setShipments, setCurrentStep, loadDraft, deleteDraft, clearSelectedShipments } from '../../store/slices/wizardSlice';
 import { Shipment } from '../../types/shipment';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { Title, Paragraph } = Typography;
 const { Dragger } = Upload;
 
 const Step1Upload: React.FC = () => {
+  const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { drafts = [] } = useAppSelector((state) => state.wizard);
   const [loading, setLoading] = useState(false);

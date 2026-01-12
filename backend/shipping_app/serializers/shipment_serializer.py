@@ -9,6 +9,8 @@ class ShipmentSerializer(serializers.ModelSerializer):
     formatted_to_address = serializers.SerializerMethodField()
     package_details = serializers.SerializerMethodField()
     validation_status = serializers.SerializerMethodField()
+    has_label = serializers.SerializerMethodField()
+    tracking_number = serializers.SerializerMethodField()
     
     class Meta:
         model = Shipment
@@ -26,6 +28,22 @@ class ShipmentSerializer(serializers.ModelSerializer):
     
     def get_validation_status(self, obj):
         return obj.get_validation_status()
+    
+    def get_has_label(self, obj):
+        """Check if shipment has a shipping label (shipped)"""
+        try:
+            return hasattr(obj, 'label') and obj.label is not None
+        except:
+            return False
+    
+    def get_tracking_number(self, obj):
+        """Get tracking number if label exists"""
+        try:
+            if hasattr(obj, 'label') and obj.label:
+                return obj.label.tracking_number
+        except:
+            pass
+        return None
     
     def update(self, instance, validated_data):
         """Override update to track which parts have been reviewed"""

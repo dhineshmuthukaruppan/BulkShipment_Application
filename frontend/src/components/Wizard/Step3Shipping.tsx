@@ -9,6 +9,8 @@ import {
   Modal,
   message,
   Popconfirm,
+  Empty,
+  Skeleton,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -30,6 +32,7 @@ import {
 } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
 import { Shipment } from '../../types/shipment';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { Title, Text } = Typography;
 
@@ -59,8 +62,10 @@ const SHIPPING_SERVICES: Record<string, Array<{ value: string; label: string; pr
 };
 
 const Step3Shipping: React.FC = () => {
+  const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { shipments, selectedShipments, totalCost } = useAppSelector((state) => state.wizard);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
 
   useEffect(() => {
     dispatch(calculateTotalCost());

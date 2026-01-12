@@ -13,6 +13,8 @@ import {
   Popconfirm,
   Dropdown,
   MenuProps,
+  Empty,
+  Skeleton,
 } from 'antd';
 import {
   EditOutlined,
@@ -44,11 +46,13 @@ import { shipmentService, savedAddressService, savedPackageService } from '../..
 import { Shipment, SavedAddress, SavedPackage } from '../../types/shipment';
 import AddressModal from '../common/AddressModal';
 import PackageModal from '../common/PackageModal';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { Title } = Typography;
 const { Search } = Input;
 
 const Step2Review: React.FC = () => {
+  const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { shipments, selectedShipments } = useAppSelector((state) => state.wizard);
   const [searchText, setSearchText] = useState('');
@@ -655,9 +659,24 @@ const Step2Review: React.FC = () => {
 
   const hasSelected = selectedShipments.length > 0;
 
+  // Check if all shipments are ready
+  const allShipmentsReady = shipments.length > 0 && shipments.every(shipment => shipment.status === 'ready');
+  const notReadyCount = shipments.filter(shipment => shipment.status !== 'ready').length;
+
+  const handleContinueToStep3 = () => {
+    if (!allShipmentsReady) {
+      message.warning(
+        `Cannot proceed to Step 3. ${notReadyCount} shipment${notReadyCount > 1 ? 's' : ''} still need${notReadyCount === 1 ? 's' : ''} to be reviewed and marked as ready.`,
+        5
+      );
+      return;
+    }
+    dispatch(setCurrentStep(3));
+  };
+
   return (
     <div>
-      <Title level={2}>Review and Edit File (Step 2 of 3)</Title>
+      <Title level={2} style={{ background: 'transparent', margin: '0 0 24px 0' }}>Review and Edit File (Step 2 of 3)</Title>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Card style={{ overflow: 'visible' }}>
@@ -1078,7 +1097,7 @@ const Step2Review: React.FC = () => {
             >
               {getUniqueToAddresses().map(address => (
                 <Select.Option key={address} value={address} label={address}>
-                  <div style={{ whiteSpace: 'pre-line' }}>{address}</div>
+                  {address}
                 </Select.Option>
               ))}
             </Select>

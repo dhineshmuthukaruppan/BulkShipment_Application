@@ -1,3 +1,34 @@
+/* CSS Variables for Theme Support */
+:root {
+  --bg-primary: #fff;
+  --bg-secondary: #f5f5f5;
+  --bg-tertiary: #fafafa;
+  --bg-hover: #f5f5f5;
+  --bg-selected: #e6f7ff;
+  --text-primary: #262626;
+  --text-secondary: #8c8c8c;
+  --text-tertiary: #595959;
+  --border-color: #f0f0f0;
+  --border-color-dark: #303030;
+  --shadow: rgba(0, 0, 0, 0.06);
+  --shadow-hover: rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="dark"] {
+  --bg-primary: #141414;
+  --bg-secondary: #1f1f1f;
+  --bg-tertiary: #262626;
+  --bg-hover: #262626;
+  --bg-selected: #111b26;
+  --text-primary: #fff;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary: rgba(255, 255, 255, 0.85);
+  --border-color: #303030;
+  --border-color-dark: #434343;
+  --shadow: rgba(0, 0, 0, 0.3);
+  --shadow-hover: rgba(0, 0, 0, 0.5);
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -5,9 +36,48 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+  font-size: 16px; /* Increased base font size from default 14px */
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+#root {
+  background-color: var(--bg-primary);
+  min-height: 100vh;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Ensure all elements inherit theme immediately */
+* {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Force Ant Design components to respect theme changes immediately */
+.ant-layout,
+.ant-layout-header,
+.ant-layout-sider,
+.ant-menu,
+.ant-card,
+.ant-card-head,
+.ant-card-body,
+.ant-table,
+.ant-table-thead > tr > th,
+.ant-table-tbody > tr > td,
+.ant-input,
+.ant-select-selector,
+.ant-btn {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease !important;
+}
+
+/* Ensure root element also has data-theme for CSS variables */
+#root[data-theme="dark"],
+#root[data-theme="light"] {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
 }

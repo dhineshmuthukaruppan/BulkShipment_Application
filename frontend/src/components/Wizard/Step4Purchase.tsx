@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   Button,
@@ -8,23 +8,45 @@ import {
   Checkbox,
   message,
   Divider,
+  Select,
 } from 'antd';
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
+  PrinterOutlined,
 } from '@ant-design/icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setCurrentStep } from '../../store/slices/wizardSlice';
+import { setCurrentStep, setShipments } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
+import { generateShippingLabelsPDF } from '../../utils/pdfGenerator';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { Title, Text } = Typography;
 
 const Step4Purchase: React.FC = () => {
+  const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { shipments, totalCost } = useAppSelector((state) => state.wizard);
   const [labelSize, setLabelSize] = useState('letter');
+  const [printSize, setPrintSize] = useState('letter');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
+  const [shippedShipments, setShippedShipments] = useState<any[]>([]);
+
+  // Load shipped shipments (those with labels)
+  useEffect(() => {
+    loadShippedShipments();
+  }, []);
+
+  const loadShippedShipments = async () => {
+    try {
+      const allShipments = await shipmentService.getShipments();
+      const shipped = allShipments.filter(s => s.has_label === true);
+      setShippedShipments(shipped);
+    } catch (error) {
+      console.error('Failed to load shipped shipments:', error);
+    }
+  };
 
   const handlePurchase = async () => {
     if (shipments.length === 0) {
@@ -42,11 +64,35 @@ const Step4Purchase: React.FC = () => {
       const shipmentIds = shipments.map(s => s.id);
       const result = await shipmentService.purchase(shipmentIds, labelSize);
       message.success(`Successfully created ${result.labels_created} labels!`);
+      
+      // Reload all shipments to get updated has_label and tracking_number
+      const allShipments = await shipmentService.getShipments();
+      dispatch(setShipments(allShipments));
+      
+      // Reload shipped shipments after purchase
+      await loadShippedShipments();
       dispatch(setCurrentStep(5)); // Move to success step
     } catch (error: any) {
       message.error(error.response?.data?.error || 'Failed to purchase labels');
     } finally {
       setPurchasing(false);
+    }
+  };
+
+  const handlePrintLabels = () => {
+    if (shippedShipments.length === 0) {
+      message.warning('No shipped products available to print. Please purchase labels first.');
+      return;
+    }
+
+    try {
+      generateShippingLabelsPDF(shippedShipments, {
+        pageSize: printSize as 'letter' | '4x6',
+        orientation: 'portrait',
+      });
+      message.success(`Generated PDF with ${shippedShipments.length} shipping label(s) in ${printSize === 'letter' ? 'A4/Letter' : '4x6'} format`);
+    } catch (error: any) {
+      message.error(error.message || 'Failed to generate PDF');
     }
   };
 

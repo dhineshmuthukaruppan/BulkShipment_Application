@@ -89,11 +89,49 @@ export const savedAddressService = {
     const response = await api.get('/saved-addresses/');
     return response.data;
   },
+  getById: async (id: number): Promise<SavedAddress> => {
+    const response = await api.get(`/saved-addresses/${id}/`);
+    return response.data;
+  },
+  create: async (data: Partial<SavedAddress>): Promise<SavedAddress> => {
+    const response = await api.post('/saved-addresses/', data);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<SavedAddress>): Promise<SavedAddress> => {
+    const response = await api.patch(`/saved-addresses/${id}/`, data);
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/saved-addresses/${id}/`);
+  },
+  setDefault: async (id: number): Promise<SavedAddress> => {
+    const response = await api.patch(`/saved-addresses/${id}/`, { is_default: true });
+    return response.data;
+  },
 };
 
 export const savedPackageService = {
   getAll: async (): Promise<SavedPackage[]> => {
     const response = await api.get('/saved-packages/');
+    return response.data;
+  },
+  getById: async (id: number): Promise<SavedPackage> => {
+    const response = await api.get(`/saved-packages/${id}/`);
+    return response.data;
+  },
+  create: async (data: Partial<SavedPackage>): Promise<SavedPackage> => {
+    const response = await api.post('/saved-packages/', data);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<SavedPackage>): Promise<SavedPackage> => {
+    const response = await api.patch(`/saved-packages/${id}/`, data);
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/saved-packages/${id}/`);
+  },
+  setDefault: async (id: number): Promise<SavedPackage> => {
+    const response = await api.patch(`/saved-packages/${id}/`, { is_default: true });
     return response.data;
   },
 };

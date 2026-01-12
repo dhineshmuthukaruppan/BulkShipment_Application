@@ -37,21 +37,77 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     queryset = Shipment.objects.all()
     serializer_class = ShipmentSerializer
     
+    def create(self, request, *args, **kwargs):
+        """Override create to add logging"""
+        response = super().create(request, *args, **kwargs)
+        if response.status_code == 201:
+            shipment_id = response.data.get('id')
+            ShippingLogger().log_shipment_create(
+                shipment_id=shipment_id,
+                order_number=response.data.get('order_number'),
+                status=response.data.get('status')
+            )
+        return response
+    
     def update(self, request, *args, **kwargs):
-        """Override update to handle manual status changes"""
+        """Override update to handle manual status changes and add logging"""
+        instance = self.get_object()
+        previous_values = {
+            'status': instance.status,
+            'shipping_service': instance.shipping_service,
+            'shipping_cost': str(instance.shipping_cost) if instance.shipping_cost else None,
+        }
+        
         # If status is being explicitly set, mark it to skip auto-calculation
         if 'status' in request.data:
-            instance = self.get_object()
             instance._skip_auto_status = True
-        return super().update(request, *args, **kwargs)
+        
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == 200:
+            ShippingLogger().log_shipment_update(
+                shipment_id=instance.id,
+                changes=request.data,
+                previous_values=previous_values
+            )
+        return response
     
     def partial_update(self, request, *args, **kwargs):
-        """Override partial_update to handle manual status changes"""
+        """Override partial_update to handle manual status changes and add logging"""
+        instance = self.get_object()
+        previous_values = {
+            'status': instance.status,
+            'shipping_service': instance.shipping_service,
+            'shipping_cost': str(instance.shipping_cost) if instance.shipping_cost else None,
+        }
+        
         # If status is being explicitly set, mark it to skip auto-calculation
         if 'status' in request.data:
-            instance = self.get_object()
             instance._skip_auto_status = True
-        return super().partial_update(request, *args, **kwargs)
+        
+        response = super().partial_update(request, *args, **kwargs)
+        if response.status_code == 200:
+            ShippingLogger().log_shipment_update(
+                shipment_id=instance.id,
+                changes=request.data,
+                previous_values=previous_values
+            )
+        return response
+    
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to add logging"""
+        instance = self.get_object()
+        shipment_id = instance.id
+        order_number = instance.order_number
+        shipment_status = instance.status
+        
+        response = super().destroy(request, *args, **kwargs)
+        if response.status_code == 204:
+            ShippingLogger().log_shipment_delete(
+                shipment_id=shipment_id,
+                order_number=order_number,
+                status=shipment_status
+            )
+        return response
     
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_csv(self, request):
@@ -466,9 +522,37 @@ class SavedAddressViewSet(viewsets.ModelViewSet):
     """ViewSet for SavedAddress CRUD operations"""
     queryset = SavedAddress.objects.all()
     serializer_class = SavedAddressSerializer
+    
+    def perform_create(self, serializer):
+        """Override create to handle default address logic"""
+        instance = serializer.save()
+        # If this is set as default, unset all others
+        if instance.is_default:
+            SavedAddress.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)
+    
+    def perform_update(self, serializer):
+        """Override update to handle default address logic"""
+        instance = serializer.save()
+        # If this is set as default, unset all others
+        if instance.is_default:
+            SavedAddress.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)
 
 
 class SavedPackageViewSet(viewsets.ModelViewSet):
     """ViewSet for SavedPackage CRUD operations"""
     queryset = SavedPackage.objects.all()
     serializer_class = SavedPackageSerializer
+    
+    def perform_create(self, serializer):
+        """Override create to handle default package logic"""
+        instance = serializer.save()
+        # If this is set as default, unset all others
+        if instance.is_default:
+            SavedPackage.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)
+    
+    def perform_update(self, serializer):
+        """Override update to handle default package logic"""
+        instance = serializer.save()
+        # If this is set as default, unset all others
+        if instance.is_default:
+            SavedPackage.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)

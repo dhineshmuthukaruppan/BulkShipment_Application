@@ -90,13 +90,92 @@ class ShippingLogger:
         )
     
     @staticmethod
-    def log_error(error_type, error_message, context=None):
-        """Log error conditions"""
+    def log_error(error_type, error_message, context=None, exc_info=None):
+        """Log error conditions with enhanced context"""
+        import traceback
+        import uuid
+        from datetime import datetime
+        
+        error_context = context or {}
+        error_context.update({
+            'error_id': str(uuid.uuid4()),
+            'timestamp': datetime.utcnow().isoformat(),
+        })
+        
+        # Add stack trace if exception info provided
+        if exc_info:
+            error_context['traceback'] = ''.join(traceback.format_exception(*exc_info))
+        elif 'traceback' not in error_context:
+            # Try to get current traceback if available
+            try:
+                import sys
+                error_context['traceback'] = ''.join(traceback.format_exception(*sys.exc_info()))
+            except:
+                pass
+        
         logger.error(
             "error_occurred",
             error_type=error_type,
             error_message=str(error_message),
-            context=context or {},
-            event_type="error"
+            context=error_context,
+            event_type="error",
+            exc_info=exc_info
+        )
+    
+    @staticmethod
+    def log_shipment_update(shipment_id, changes, previous_values=None):
+        """Log individual shipment update"""
+        logger.info(
+            "shipment_updated",
+            shipment_id=shipment_id,
+            changes=changes,
+            previous_values=previous_values or {},
+            event_type="shipment_update"
+        )
+    
+    @staticmethod
+    def log_shipment_create(shipment_id, order_number=None, status=None):
+        """Log shipment creation"""
+        logger.info(
+            "shipment_created",
+            shipment_id=shipment_id,
+            order_number=order_number,
+            status=status,
+            event_type="shipment_create"
+        )
+    
+    @staticmethod
+    def log_shipment_delete(shipment_id, order_number=None, status=None):
+        """Log shipment deletion"""
+        logger.info(
+            "shipment_deleted",
+            shipment_id=shipment_id,
+            order_number=order_number,
+            status=status,
+            event_type="shipment_delete"
+        )
+    
+    @staticmethod
+    def log_master_data_operation(operation, data_type, record_id, changes=None, previous_values=None):
+        """Log master data operations (address/package CRUD)"""
+        logger.info(
+            "master_data_operation",
+            operation=operation,  # 'create', 'update', 'delete', 'set_default'
+            data_type=data_type,  # 'address', 'package'
+            record_id=record_id,
+            changes=changes or {},
+            previous_values=previous_values or {},
+            event_type="master_data"
+        )
+    
+    @staticmethod
+    def log_dashboard_access(date_range_start=None, date_range_end=None, filters=None):
+        """Log dashboard data access"""
+        logger.info(
+            "dashboard_accessed",
+            date_range_start=date_range_start.isoformat() if date_range_start else None,
+            date_range_end=date_range_end.isoformat() if date_range_end else None,
+            filters=filters or {},
+            event_type="dashboard_access"
         )
 

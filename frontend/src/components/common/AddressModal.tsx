@@ -67,39 +67,79 @@ const AddressModal: React.FC<AddressModalProps> = ({
       okText="Save"
       cancelText="Cancel"
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" aria-label={title}>
         <Form.Item
           label="First Name"
           name="first_name"
-          rules={[{ required: true, message: 'Please enter first name' }]}
+          rules={[
+            { required: true, message: 'Please enter first name' },
+            { max: 50, message: 'First name must be less than 50 characters' }
+          ]}
+          hasFeedback
         >
-          <Input />
+          <Input 
+            placeholder="Enter first name"
+            aria-label="First name"
+            aria-required="true"
+          />
         </Form.Item>
 
-        <Form.Item label="Last Name" name="last_name">
-          <Input />
+        <Form.Item 
+          label="Last Name" 
+          name="last_name"
+          rules={[{ max: 50, message: 'Last name must be less than 50 characters' }]}
+          hasFeedback
+        >
+          <Input 
+            placeholder="Enter last name"
+            aria-label="Last name"
+          />
         </Form.Item>
 
         <Form.Item
           label="Address Line 1"
           name="address"
-          rules={[{ required: true, message: 'Please enter address' }]}
+          rules={[
+            { required: true, message: 'Please enter address' },
+            { max: 200, message: 'Address must be less than 200 characters' }
+          ]}
+          hasFeedback
         >
-          <Input />
+          <Input 
+            placeholder="Enter street address"
+            aria-label="Address line 1"
+            aria-required="true"
+          />
         </Form.Item>
 
-        <Form.Item label="Address Line 2" name="address2">
-          <Input />
+        <Form.Item 
+          label="Address Line 2" 
+          name="address2"
+          rules={[{ max: 200, message: 'Address must be less than 200 characters' }]}
+          hasFeedback
+        >
+          <Input 
+            placeholder="Apartment, suite, etc. (optional)"
+            aria-label="Address line 2"
+          />
         </Form.Item>
 
         <Space.Compact style={{ width: '100%' }}>
           <Form.Item
             label="City"
             name="city"
-            rules={[{ required: true, message: 'Please enter city' }]}
+            rules={[
+              { required: true, message: 'Please enter city' },
+              { max: 100, message: 'City must be less than 100 characters' }
+            ]}
             style={{ width: '50%', marginRight: '8px' }}
+            hasFeedback
           >
-            <Input />
+            <Input 
+              placeholder="Enter city"
+              aria-label="City"
+              aria-required="true"
+            />
           </Form.Item>
 
           <Form.Item
@@ -107,22 +147,49 @@ const AddressModal: React.FC<AddressModalProps> = ({
             name="state"
             rules={[{ required: true, message: 'Please select state' }]}
             style={{ width: '25%', marginRight: '8px' }}
+            hasFeedback
           >
-            <Select options={US_STATES.map(state => ({ label: state, value: state }))} />
+            <Select 
+              placeholder="Select state"
+              options={US_STATES.map(state => ({ label: state, value: state }))}
+              aria-label="State"
+              aria-required="true"
+            />
           </Form.Item>
 
           <Form.Item
             label="ZIP Code"
             name="zip"
-            rules={[{ required: true, message: 'Please enter ZIP code' }]}
+            rules={[
+              { required: true, message: 'Please enter ZIP code' },
+              { pattern: /^\d{5}(-\d{4})?$/, message: 'Please enter a valid ZIP code (e.g., 12345 or 12345-6789)' }
+            ]}
             style={{ width: '25%' }}
+            hasFeedback
           >
-            <Input />
+            <Input 
+              placeholder="12345"
+              aria-label="ZIP code"
+              aria-required="true"
+              maxLength={10}
+            />
           </Form.Item>
         </Space.Compact>
 
-        <Form.Item label="Phone" name="phone">
-          <Input />
+        <Form.Item 
+          label="Phone" 
+          name="phone"
+          rules={[
+            { pattern: /^[\d\s\-\(\)]+$/, message: 'Please enter a valid phone number' },
+            { max: 20, message: 'Phone number must be less than 20 characters' }
+          ]}
+          hasFeedback
+        >
+          <Input 
+            placeholder="(555) 123-4567"
+            aria-label="Phone number"
+            maxLength={20}
+          />
         </Form.Item>
       </Form>
     </Modal>

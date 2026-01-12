@@ -50,52 +50,125 @@ const PackageModal: React.FC<PackageModalProps> = ({
       okText="Save"
       cancelText="Cancel"
     >
-      <Form form={form} layout="vertical">
-        <Form.Item label="Item ID / SKU" name="item_sku">
-          <Input />
+      <Form form={form} layout="vertical" aria-label="Edit Package Details">
+        <Form.Item 
+          label="Item ID / SKU" 
+          name="item_sku"
+          rules={[{ max: 100, message: 'SKU must be less than 100 characters' }]}
+          hasFeedback
+        >
+          <Input 
+            placeholder="Enter item SKU (optional)"
+            aria-label="Item SKU"
+          />
         </Form.Item>
 
-        <Form.Item label="Dimensions (inches)">
+        <Form.Item label="Dimensions (inches)" required>
           <Input.Group compact>
             <Form.Item
               name="length"
-              rules={[{ required: true, message: 'Required' }]}
+              rules={[
+                { required: true, message: 'Length is required' },
+                { type: 'number', min: 0.01, message: 'Length must be greater than 0' },
+                { type: 'number', max: 108, message: 'Length cannot exceed 108 inches' }
+              ]}
               style={{ width: '33%', marginRight: '8px' }}
+              hasFeedback
             >
-              <InputNumber placeholder="Length" min={0.01} step={0.1} style={{ width: '100%' }} />
+              <InputNumber 
+                placeholder="Length" 
+                min={0.01} 
+                max={108}
+                step={0.1} 
+                style={{ width: '100%' }}
+                aria-label="Length in inches"
+                aria-required="true"
+              />
             </Form.Item>
             <Form.Item
               name="width"
-              rules={[{ required: true, message: 'Required' }]}
+              rules={[
+                { required: true, message: 'Width is required' },
+                { type: 'number', min: 0.01, message: 'Width must be greater than 0' },
+                { type: 'number', max: 108, message: 'Width cannot exceed 108 inches' }
+              ]}
               style={{ width: '33%', marginRight: '8px' }}
+              hasFeedback
             >
-              <InputNumber placeholder="Width" min={0.01} step={0.1} style={{ width: '100%' }} />
+              <InputNumber 
+                placeholder="Width" 
+                min={0.01} 
+                max={108}
+                step={0.1} 
+                style={{ width: '100%' }}
+                aria-label="Width in inches"
+                aria-required="true"
+              />
             </Form.Item>
             <Form.Item
               name="height"
-              rules={[{ required: true, message: 'Required' }]}
+              rules={[
+                { required: true, message: 'Height is required' },
+                { type: 'number', min: 0.01, message: 'Height must be greater than 0' },
+                { type: 'number', max: 108, message: 'Height cannot exceed 108 inches' }
+              ]}
               style={{ width: '33%' }}
+              hasFeedback
             >
-              <InputNumber placeholder="Height" min={0.01} step={0.1} style={{ width: '100%' }} />
+              <InputNumber 
+                placeholder="Height" 
+                min={0.01} 
+                max={108}
+                step={0.1} 
+                style={{ width: '100%' }}
+                aria-label="Height in inches"
+                aria-required="true"
+              />
             </Form.Item>
           </Input.Group>
         </Form.Item>
 
-        <Form.Item label="Weight">
+        <Form.Item label="Weight" required>
           <Input.Group compact>
             <Form.Item
               name="weight_lbs"
-              rules={[{ required: true, message: 'Required' }]}
+              rules={[
+                { required: true, message: 'Weight in pounds is required' },
+                { type: 'number', min: 0, message: 'Weight cannot be negative' },
+                { type: 'number', max: 150, message: 'Weight cannot exceed 150 lbs' }
+              ]}
               style={{ width: '50%', marginRight: '8px' }}
+              hasFeedback
             >
-              <InputNumber placeholder="Pounds" min={0} step={0.1} style={{ width: '100%' }} />
+              <InputNumber 
+                placeholder="Pounds" 
+                min={0} 
+                max={150}
+                step={0.1} 
+                style={{ width: '100%' }}
+                aria-label="Weight in pounds"
+                aria-required="true"
+              />
             </Form.Item>
             <Form.Item
               name="weight_oz"
-              rules={[{ required: true, message: 'Required' }]}
+              rules={[
+                { required: true, message: 'Weight in ounces is required' },
+                { type: 'number', min: 0, message: 'Ounces cannot be negative' },
+                { type: 'number', max: 15.99, message: 'Ounces cannot exceed 15.99' }
+              ]}
               style={{ width: '50%' }}
+              hasFeedback
             >
-              <InputNumber placeholder="Ounces" min={0} step={0.1} style={{ width: '100%' }} />
+              <InputNumber 
+                placeholder="Ounces" 
+                min={0} 
+                max={15.99}
+                step={0.1} 
+                style={{ width: '100%' }}
+                aria-label="Weight in ounces"
+                aria-required="true"
+              />
             </Form.Item>
           </Input.Group>
         </Form.Item>

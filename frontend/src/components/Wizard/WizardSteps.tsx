@@ -7,10 +7,12 @@ import Step1Upload from './Step1Upload';
 import Step2Review from './Step2Review';
 import Step3Shipping from './Step3Shipping';
 import Step4Purchase from './Step4Purchase';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { Title, Paragraph } = Typography;
 
 const WizardSteps: React.FC = () => {
+  const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { currentStep, shipments } = useAppSelector((state) => state.wizard);
 
@@ -108,7 +110,7 @@ const WizardSteps: React.FC = () => {
   }));
 
   return (
-    <div>
+    <div style={{ padding: '24px', background: '#fff', minHeight: '100vh' }}>
       <Steps 
         current={currentStep - 1} 
         items={stepItems}

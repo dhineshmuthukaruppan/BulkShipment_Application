@@ -11,18 +11,22 @@ import {
   QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { toggleSidebar } from '../../store/slices/uiSlice';
+import { useTheme } from '../../contexts/ThemeContext';
 import './Sidebar.css';
 
 const { Sider } = Layout;
 
 interface SidebarProps {
   selectedKey: string;
+  onMenuClick?: (key: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ selectedKey }) => {
+const Sidebar: React.FC<SidebarProps> = ({ selectedKey, onMenuClick }) => {
+  const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const collapsed = useAppSelector((state) => state.ui.sidebarCollapsed);
 
@@ -41,6 +45,11 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedKey }) => {
       key: 'upload',
       icon: <UploadOutlined />,
       label: 'Upload Spreadsheet',
+    },
+    {
+      key: 'master',
+      icon: <DatabaseOutlined />,
+      label: 'Master',
     },
     {
       key: 'history',
@@ -82,23 +91,27 @@ const Sidebar: React.FC<SidebarProps> = ({ selectedKey }) => {
         top: '64px',
         height: 'calc(100vh - 64px)',
         overflow: 'hidden',
-        background: '#fff',
-        boxShadow: '2px 0 8px rgba(0,0,0,0.06)',
+        background: theme === 'dark' ? '#1f1f1f' : '#fff',
+        boxShadow: theme === 'dark' ? '2px 0 8px rgba(0,0,0,0.3)' : '2px 0 8px rgba(0,0,0,0.06)',
       }}
       className="zoho-sidebar"
     >
       <Menu
         mode="inline"
         selectedKeys={[selectedKey]}
-        defaultSelectedKeys={['upload']}
         inlineCollapsed={false}
         style={{
           borderRight: 0,
           height: 'calc(100% - 64px)',
           paddingTop: '16px',
-          background: '#fff',
+          background: theme === 'dark' ? '#1f1f1f' : '#fff',
         }}
         items={menuItems}
+        onClick={({ key }) => {
+          if (onMenuClick) {
+            onMenuClick(key);
+          }
+        }}
       />
       
       {/* Collapse/Expand Button at Bottom - Labels always in DOM */}

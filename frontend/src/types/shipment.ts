@@ -40,6 +40,8 @@ export interface Shipment {
   formatted_to_address: string;
   package_details: string;
   validation_status: 'valid' | 'warning' | 'invalid';
+  has_label?: boolean; // Whether shipment has a shipping label (shipped)
+  tracking_number?: string | null; // Tracking number if label exists
   created_at: string;
   updated_at: string;
 }
