@@ -7,7 +7,7 @@
 | Field | Value |
 |-------|-------|
 | Test Type | Technical Assessment |
-| Duration | As specified by hiring manager |
+| Duration | As specified by hiring manager | 
 | Deliverables | Functional web application |
 
 ---
