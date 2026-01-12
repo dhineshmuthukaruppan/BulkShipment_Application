@@ -122,7 +122,7 @@ const Step4Purchase: React.FC = () => {
 
             {/* Grand Total Display */}
             <div style={{ textAlign: 'right' }}>
-              <Text type="secondary" style={{ fontSize: '16px' }}>Grand Total:</Text>
+              <Text type="secondary" style={{ fontSize: '16px', color: theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : undefined }}>Grand Total:</Text>
               <Title level={2} style={{ margin: '8px 0', color: '#1890ff' }}>
                 ${(Number(totalCost) || 0).toFixed(2)}
               </Title>

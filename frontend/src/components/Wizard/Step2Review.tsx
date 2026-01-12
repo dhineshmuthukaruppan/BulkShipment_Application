@@ -341,15 +341,25 @@ const Step2Review: React.FC = () => {
 
   // Get status tag - Simple 3-status system using Ant Design colors (clickable)
   const getStatusTag = (status: string, shipment: Shipment) => {
+    const smallTagStyle = { 
+      fontSize: '11px', 
+      padding: '2px 8px', 
+      lineHeight: '18px',
+      margin: 0 
+    };
+    
     const tagProps: any = {
-      style: { cursor: status !== 'invalid' ? 'pointer' : 'default' },
+      style: { 
+        cursor: status !== 'invalid' ? 'pointer' : 'default',
+        ...smallTagStyle
+      },
       onClick: status !== 'invalid' ? () => handleStatusToggle(shipment) : undefined,
     };
 
     switch (status) {
       case 'ready':
         return (
-          <Tag color="success" icon={<CheckCircleOutlined />} {...tagProps}>
+          <Tag color="success" icon={<CheckCircleOutlined />} style={smallTagStyle} {...tagProps}>
             Ready
           </Tag>
         );
@@ -357,8 +367,8 @@ const Step2Review: React.FC = () => {
         return (
           <Tag 
             color="warning" 
-            icon={<ExclamationCircleOutlined style={{ color: '#000000' }} />} 
-            style={{ color: '#000000' }}
+            icon={<ExclamationCircleOutlined style={{ color: '#000000', fontSize: '11px' }} />} 
+            style={{ color: '#000000', ...smallTagStyle }}
             {...tagProps}
           >
             Needs Review
@@ -368,8 +378,8 @@ const Step2Review: React.FC = () => {
         return (
           <Tag 
             color="warning" 
-            icon={<ExclamationCircleOutlined style={{ color: '#000000' }} />} 
-            style={{ color: '#000000' }}
+            icon={<ExclamationCircleOutlined style={{ color: '#000000', fontSize: '11px' }} />} 
+            style={{ color: '#000000', ...smallTagStyle }}
             {...tagProps}
           >
             Needs Review - Address
@@ -379,8 +389,8 @@ const Step2Review: React.FC = () => {
         return (
           <Tag 
             color="warning" 
-            icon={<ExclamationCircleOutlined style={{ color: '#000000' }} />} 
-            style={{ color: '#000000' }}
+            icon={<ExclamationCircleOutlined style={{ color: '#000000', fontSize: '11px' }} />} 
+            style={{ color: '#000000', ...smallTagStyle }}
             {...tagProps}
           >
             Needs Review - Package
@@ -388,7 +398,7 @@ const Step2Review: React.FC = () => {
         );
       case 'invalid':
         return (
-          <Tag color="error" icon={<CloseCircleOutlined />}>
+          <Tag color="error" icon={<CloseCircleOutlined style={{ fontSize: '11px' }} />} style={smallTagStyle}>
             Invalid
           </Tag>
         );
@@ -396,8 +406,8 @@ const Step2Review: React.FC = () => {
         return (
           <Tag 
             color="warning" 
-            icon={<ExclamationCircleOutlined style={{ color: '#000000' }} />} 
-            style={{ color: '#000000' }}
+            icon={<ExclamationCircleOutlined style={{ color: '#000000', fontSize: '11px' }} />} 
+            style={{ color: '#000000', ...smallTagStyle }}
             {...tagProps}
           >
             Needs Review
@@ -619,7 +629,7 @@ const Step2Review: React.FC = () => {
               size="small"
               style={{
                 fontSize: '20px',
-                color: '#595959',
+                color: theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959',
                 padding: '6px 12px',
                 minWidth: '48px',
                 height: '48px',
@@ -632,13 +642,13 @@ const Step2Review: React.FC = () => {
                 border: '1px solid transparent',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#f5f5f5';
-                e.currentTarget.style.color = '#262626';
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#262626' : '#f5f5f5';
+                e.currentTarget.style.color = theme === 'dark' ? '#fff' : '#262626';
                 e.currentTarget.style.borderColor = '#d9d9d9';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = '#595959';
+                e.currentTarget.style.color = theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959';
                 e.currentTarget.style.borderColor = 'transparent';
               }}
               onClick={(e) => e.stopPropagation()}
@@ -680,39 +690,79 @@ const Step2Review: React.FC = () => {
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Card style={{ overflow: 'visible' }}>
-          {/* Search Bar and Filter Button */}
-          <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
-            <Search
-              placeholder="Search by address, order number, or recipient name"
-              prefix={<SearchOutlined />}
-              allowClear
-              style={{ width: 400 }}
-              onChange={(e) => setSearchText(e.target.value)}
-            />
-            <Button
-              icon={<FilterOutlined />}
-              onClick={() => setFilterModalVisible(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              Filter
-              {Object.keys(filters).filter(key => filters[key as keyof typeof filters]).length > 0 && (
-                <span style={{ 
-                  marginLeft: 4, 
-                  backgroundColor: '#1890ff', 
-                  color: 'white', 
-                  borderRadius: '50%', 
-                  width: 18, 
-                  height: 18, 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center',
-                  fontSize: '11px',
-                  fontWeight: 'bold'
-                }}>
-                  {Object.keys(filters).filter(key => filters[key as keyof typeof filters]).length}
-                </span>
-              )}
-            </Button>
+          {/* Search Bar, Filter Button, and Action Buttons */}
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <Search
+                placeholder="Search by address, order number, or recipient name"
+                prefix={<SearchOutlined />}
+                allowClear
+                style={{ width: 400 }}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+              <Button
+                icon={<FilterOutlined />}
+                onClick={() => setFilterModalVisible(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                Filter
+                {Object.keys(filters).filter(key => filters[key as keyof typeof filters]).length > 0 && (
+                  <span style={{ 
+                    marginLeft: 4, 
+                    backgroundColor: '#1890ff', 
+                    color: 'white', 
+                    borderRadius: '50%', 
+                    width: 18, 
+                    height: 18, 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: 'bold'
+                  }}>
+                    {Object.keys(filters).filter(key => filters[key as keyof typeof filters]).length}
+                  </span>
+                )}
+              </Button>
+            </div>
+            <Space>
+              <Button
+                icon={<SaveOutlined />}
+                onClick={() => {
+                  dispatch(calculateTotalCost());
+                  dispatch(saveDraft({ step: 2 }));
+                  message.success('Draft saved successfully!');
+                  dispatch(setCurrentStep(1));
+                }}
+                disabled={shipments.length === 0}
+              >
+                Save as Draft
+              </Button>
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={() => {
+                  Modal.confirm({
+                    title: 'Go back?',
+                    content: 'Your current data will be lost. Are you sure?',
+                    onOk: () => dispatch(setCurrentStep(1)),
+                    okText: 'Yes, Go Back',
+                    cancelText: 'Cancel',
+                    centered: true,
+                    mask: true,
+                    maskClosable: false,
+                  });
+                }}
+              >
+                Step 1
+              </Button>
+              <Button
+                type="primary"
+                onClick={handleContinueToStep3}
+                disabled={shipments.length === 0 || !allShipmentsReady}
+              >
+                Step 3 <ArrowRightOutlined />
+              </Button>
+            </Space>
           </div>
 
           {/* Bulk Actions Toolbar */}
@@ -799,47 +849,6 @@ const Step2Review: React.FC = () => {
             }}
           />
         </Card>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <Space>
-            <Button
-              icon={<SaveOutlined />}
-              onClick={() => {
-                dispatch(calculateTotalCost());
-                dispatch(saveDraft({ step: 2 }));
-                message.success('Draft saved successfully!');
-                dispatch(setCurrentStep(1));
-              }}
-              disabled={shipments.length === 0}
-            >
-              Save as Draft
-            </Button>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => {
-                Modal.confirm({
-                  title: 'Go back?',
-                  content: 'Your current data will be lost. Are you sure?',
-                  onOk: () => dispatch(setCurrentStep(1)),
-                  okText: 'Yes, Go Back',
-                  cancelText: 'Cancel',
-                  centered: true,
-                  mask: true,
-                  maskClosable: false,
-                });
-              }}
-            >
-              Step 1
-            </Button>
-            <Button
-              type="primary"
-              onClick={() => dispatch(setCurrentStep(3))}
-              disabled={shipments.length === 0}
-            >
-              Step 3 <ArrowRightOutlined />
-            </Button>
-          </Space>
-        </div>
       </Space>
 
       {/* Edit Modals */}
@@ -1158,24 +1167,71 @@ const Step2Review: React.FC = () => {
         <p>Are you sure you want to delete this shipment? This action cannot be undone.</p>
       </Modal>
 
-      {/* Custom CSS for table styling */}
-      <style>{`
+      {/* Custom CSS for table styling - key forces re-render on theme change */}
+      <style key={theme}>{`
+        /* Checkbox styling for dark mode */
+        .ant-checkbox-inner {
+          border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+        }
+        
+        .ant-checkbox:hover .ant-checkbox-inner {
+          border-color: #1890ff !important;
+        }
+        
+        .ant-checkbox-checked .ant-checkbox-inner {
+          border-color: #1890ff !important;
+          background-color: #1890ff !important;
+        }
+        
+        .ant-checkbox-checked .ant-checkbox-inner::after {
+          border-color: #fff !important;
+        }
+        
+        .ant-table-selection-column .ant-checkbox-inner {
+          border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+        }
+        
+        .ant-table-selection-column .ant-checkbox:hover .ant-checkbox-inner {
+          border-color: #1890ff !important;
+        }
+        
+        /* Dropdown arrow visibility */
+        .ant-select-arrow {
+          color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
+        }
+        
+        .ant-select:hover .ant-select-arrow {
+          color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
+        }
+        
+        /* Select component text color */
+        .ant-select-selector {
+          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+        }
+        
+        .ant-select-selection-item {
+          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+        }
+        
         .ant-table-thead > tr > th {
-          background: #fafafa;
+          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
           font-weight: 600;
-          border-bottom: 2px solid #f0f0f0;
+          border-bottom: 2px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
+          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
         }
         
         /* Remove default sorted column background color - keep same as other headers */
         .ant-table-thead > tr > th.ant-table-column-sort {
-          background: #fafafa !important;
+          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
         }
         
         /* Better sorted column indicator - only border indicators, no color change */
         .ant-table-thead > tr > th.ant-table-column-sort {
           border-bottom: 3px solid #1890ff !important;
           position: relative;
-          background: #fafafa !important;
+          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
         }
         
         /* Add a subtle left border indicator for sorted columns */
@@ -1200,11 +1256,11 @@ const Step2Review: React.FC = () => {
         
         /* Ensure no hover or click color change on column headers */
         .ant-table-thead > tr > th:hover {
-          background: #fafafa !important;
+          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
         }
         
         .ant-table-thead > tr > th.ant-table-column-sort:hover {
-          background: #fafafa !important;
+          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
         }
         
         /* Disable pointer cursor on column header text */
@@ -1234,30 +1290,31 @@ const Step2Review: React.FC = () => {
         }
         
         .ant-table-tbody > tr > td {
-          border-bottom: 1px solid #f0f0f0;
+          border-bottom: 1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
+          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
         }
         
         /* Alternating row backgrounds for readability */
         .ant-table-tbody > tr.table-row-even > td {
-          background-color: #fafafa;
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'};
         }
         
         .ant-table-tbody > tr.table-row-even:hover > td {
-          background-color: #f0f0f0;
+          background-color: ${theme === 'dark' ? '#262626' : '#f0f0f0'};
         }
         
         /* Clear visual distinction for selected rows */
         .selected-row {
-          background-color: #e6f7ff !important;
+          background-color: ${theme === 'dark' ? '#111b26' : '#e6f7ff'} !important;
           border-left: 3px solid #1890ff !important;
         }
         
         .selected-row:hover {
-          background-color: #bae7ff !important;
+          background-color: ${theme === 'dark' ? '#1a2f47' : '#bae7ff'} !important;
         }
         
         .ant-table-tbody > tr:hover > td {
-          background-color: #f5f5f5;
+          background-color: ${theme === 'dark' ? '#262626' : '#f5f5f5'};
         }
         
         /* Status indicators - ensure they're immediately recognizable */
@@ -1289,16 +1346,26 @@ const Step2Review: React.FC = () => {
         }
 
         .action-dropdown .ant-dropdown-menu-item:hover {
-          background-color: #f5f5f5;
+          background-color: ${theme === 'dark' ? '#262626' : '#f5f5f5'};
         }
-
+        
         .action-dropdown .ant-dropdown-menu-item-danger {
           color: #ff4d4f;
         }
-
+        
         .action-dropdown .ant-dropdown-menu-item-danger:hover {
-          background-color: #fff1f0;
+          background-color: ${theme === 'dark' ? '#2a1215' : '#fff1f0'};
           color: #ff4d4f;
+        }
+        
+        /* Action button visibility in dark mode */
+        .ant-btn-dangerous {
+          color: ${theme === 'dark' ? '#ff4d4f' : '#ff4d4f'} !important;
+        }
+        
+        .ant-btn-dangerous:hover {
+          color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
+          border-color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
         }
 
         .action-dropdown .ant-dropdown-menu-item-icon {

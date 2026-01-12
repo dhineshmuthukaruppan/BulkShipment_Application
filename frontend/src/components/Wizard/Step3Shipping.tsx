@@ -232,7 +232,7 @@ const Step3Shipping: React.FC = () => {
       width: 100,
       render: (_, record) => {
         const cost = Number(record.shipping_cost) || 0;
-        return <Text strong>${cost.toFixed(2)}</Text>;
+        return <Text strong style={{ color: theme === 'dark' ? '#fff' : '#262626' }}>${cost.toFixed(2)}</Text>;
       },
     },
     {
@@ -265,10 +265,11 @@ const Step3Shipping: React.FC = () => {
         marginBottom: '24px', 
         textAlign: 'right',
         padding: '12px 16px',
-        background: '#f5f5f5',
+        background: theme === 'dark' ? '#1f1f1f' : '#f5f5f5',
         borderRadius: '4px',
+        transition: 'background-color 0.3s ease',
       }}>
-        <Text strong style={{ fontSize: '18px' }}>
+        <Text strong style={{ fontSize: '18px', color: theme === 'dark' ? '#fff' : '#262626' }}>
           Total: ${(Number(totalCost) || 0).toFixed(2)}
         </Text>
       </div>
@@ -359,6 +360,79 @@ const Step3Shipping: React.FC = () => {
             pagination={{ pageSize: 10 }}
           />
         </Card>
+        
+        {/* Dark mode table styling */}
+        <style key={theme}>{`
+          /* Checkbox styling for dark mode */
+          .ant-checkbox-inner {
+            border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+            background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+          }
+          
+          .ant-checkbox:hover .ant-checkbox-inner {
+            border-color: #1890ff !important;
+          }
+          
+          .ant-checkbox-checked .ant-checkbox-inner {
+            border-color: #1890ff !important;
+            background-color: #1890ff !important;
+          }
+          
+          .ant-checkbox-checked .ant-checkbox-inner::after {
+            border-color: #fff !important;
+          }
+          
+          .ant-table-selection-column .ant-checkbox-inner {
+            border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+            background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+          }
+          
+          /* Dropdown arrow visibility */
+          .ant-select-arrow {
+            color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
+          }
+          
+          .ant-select:hover .ant-select-arrow {
+            color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
+          }
+          
+          /* Select component text color */
+          .ant-select-selector {
+            color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+          }
+          
+          .ant-select-selection-item {
+            color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+          }
+          
+          /* Table header */
+          .ant-table-thead > tr > th {
+            background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
+            color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+            border-bottom: 1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
+          }
+          
+          /* Table body */
+          .ant-table-tbody > tr > td {
+            color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+            border-bottom: 1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
+          }
+          
+          .ant-table-tbody > tr:hover > td {
+            background-color: ${theme === 'dark' ? '#262626' : '#fafafa'} !important;
+          }
+          
+          /* Action button visibility */
+          .ant-btn-dangerous {
+            color: ${theme === 'dark' ? '#ff4d4f' : '#ff4d4f'} !important;
+            border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+          }
+          
+          .ant-btn-dangerous:hover {
+            color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
+            border-color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
+          }
+        `}</style>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
           <Space>

@@ -425,22 +425,30 @@ const Step1Upload: React.FC = () => {
       </Modal>
 
       {/* Custom CSS for preview table */}
-      <style>{`
+      <style key={theme}>{`
         .ant-table-tbody > tr > td {
-          border-bottom: 1px solid #f0f0f0;
+          border-bottom: 1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
+          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
         }
         
         /* Alternating row backgrounds for readability */
         .ant-table-tbody > tr.table-row-even > td {
-          background-color: #fafafa;
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'};
         }
         
         .ant-table-tbody > tr.table-row-even:hover > td {
-          background-color: #f0f0f0;
+          background-color: ${theme === 'dark' ? '#262626' : '#f0f0f0'};
         }
         
         .ant-table-tbody > tr:hover > td {
-          background-color: #f5f5f5;
+          background-color: ${theme === 'dark' ? '#262626' : '#f5f5f5'};
+        }
+        
+        /* Table header dark mode */
+        .ant-table-thead > tr > th {
+          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
+          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
+          border-bottom: 1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
         }
       `}</style>
     </div>

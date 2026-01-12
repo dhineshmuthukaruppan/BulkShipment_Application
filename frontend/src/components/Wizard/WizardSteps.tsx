@@ -110,12 +110,57 @@ const WizardSteps: React.FC = () => {
   }));
 
   return (
-    <div style={{ padding: '24px', background: '#fff', minHeight: '100vh' }}>
+    <div style={{ padding: '24px', background: theme === 'dark' ? '#141414' : '#fff', minHeight: '100vh', transition: 'background-color 0.3s ease' }}>
       <Steps 
         current={currentStep - 1} 
         items={stepItems}
         style={{ marginBottom: '32px' }} 
       />
+      <style>{`
+        /* Dark mode Steps styling */
+        .ant-steps-item-icon {
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+          border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+        }
+        
+        .ant-steps-item-wait .ant-steps-item-icon {
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+          border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
+          color: ${theme === 'dark' ? '#fff' : '#000000d9'} !important;
+        }
+        
+        .ant-steps-item-process .ant-steps-item-icon {
+          background-color: #1890ff !important;
+          border-color: #1890ff !important;
+          color: #fff !important;
+        }
+        
+        .ant-steps-item-finish .ant-steps-item-icon {
+          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
+          border-color: #1890ff !important;
+        }
+        
+        .ant-steps-item-finish .ant-steps-item-icon > .ant-steps-icon {
+          color: #1890ff !important;
+        }
+        
+        .ant-steps-item-title {
+          color: ${theme === 'dark' ? '#fff' : '#000000d9'} !important;
+        }
+        
+        .ant-steps-item-description {
+          color: ${theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#00000073'} !important;
+        }
+        
+        /* Step tail/connector lines */
+        .ant-steps-item-tail::after {
+          background-color: ${theme === 'dark' ? '#434343' : '#f0f0f0'} !important;
+        }
+        
+        .ant-steps-item-finish > .ant-steps-item-container > .ant-steps-item-tail::after {
+          background-color: #1890ff !important;
+        }
+      `}</style>
       {renderContent()}
     </div>
   );
