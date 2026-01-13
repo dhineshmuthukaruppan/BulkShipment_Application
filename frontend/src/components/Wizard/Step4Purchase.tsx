@@ -153,7 +153,7 @@ const Step4Purchase: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => dispatch(setCurrentStep(3))}
             >
-              Step 3
+              Back
             </Button>
             <Button
               type="primary"
