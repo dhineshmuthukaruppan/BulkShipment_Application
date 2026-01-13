@@ -372,6 +372,12 @@ const Step2Review: React.FC = () => {
       return; // Already approved
     }
 
+    // Don't allow approval if shipment is invalid
+    if (isShipmentInvalid(shipment)) {
+      message.warning('Cannot approve shipment with invalid address. Please fix the address first.');
+      return;
+    }
+
     try {
       const updated = await shipmentService.updateShipment(shipment.id, { status: 'ready' });
       dispatch(updateShipment(updated));
@@ -389,13 +395,25 @@ const Step2Review: React.FC = () => {
     }
 
     try {
-      // Filter out already approved shipments
+      // Filter out already approved shipments and invalid shipments
       const toApprove = shipments.filter(
-        s => selectedShipments.includes(s.id) && s.status !== 'ready'
+        s => selectedShipments.includes(s.id) && s.status !== 'ready' && !isShipmentInvalid(s)
       );
 
+      const invalidShipments = shipments.filter(
+        s => selectedShipments.includes(s.id) && isShipmentInvalid(s)
+      );
+
+      if (invalidShipments.length > 0) {
+        message.warning(
+          `${invalidShipments.length} selected shipment${invalidShipments.length > 1 ? 's have' : ' has'} invalid address${invalidShipments.length > 1 ? 'es' : ''}. Please fix the address${invalidShipments.length > 1 ? 'es' : ''} first.`
+        );
+      }
+
       if (toApprove.length === 0) {
-        message.info('All selected shipments are already approved');
+        if (invalidShipments.length === 0) {
+          message.info('All selected shipments are already approved');
+        }
         return;
       }
 
@@ -577,6 +595,28 @@ const Step2Review: React.FC = () => {
     { value: 'invalid', label: 'Invalid' },
   ];
 
+  // Helper function to check if shipment is invalid (has invalid status or invalid address flags)
+  const isShipmentInvalid = (shipment: Shipment): boolean => {
+    // Check if status is invalid
+    if (shipment.status === 'invalid') {
+      return true;
+    }
+    
+    // Check if there are any invalid address flags
+    const flags = shipment.validation_flags || [];
+    const invalidAddressFlags = [
+      'invalid_ship_from_address',
+      'invalid_ship_to_address',
+      'invalid_ship_from_city',
+      'invalid_ship_to_city',
+      'invalid_ship_from_pincode',
+      'invalid_ship_to_pincode',
+      'invalid_address', // General invalid address flag
+    ];
+    
+    return invalidAddressFlags.some(flag => flags.includes(flag));
+  };
+
   // Helper function to check if shipment has a specific validation issue
   const hasValidationIssue = (shipment: Shipment, issue: string): boolean => {
     const flags = shipment.validation_flags || [];
@@ -591,6 +631,12 @@ const Step2Review: React.FC = () => {
       'missing_pincode': ['missing_pincode'],
       'missing_weight': ['missing_weight'],
       'missing_dimensions': ['missing_dimensions'],
+      'invalid_ship_from_address': ['invalid_ship_from_address'],
+      'invalid_ship_to_address': ['invalid_ship_to_address'],
+      'invalid_ship_from_city': ['invalid_ship_from_city'],
+      'invalid_ship_to_city': ['invalid_ship_to_city'],
+      'invalid_ship_from_pincode': ['invalid_ship_from_pincode'],
+      'invalid_ship_to_pincode': ['invalid_ship_to_pincode'],
     };
     
     const relatedFlags = issueMap[issue] || [issue];
@@ -635,6 +681,30 @@ const Step2Review: React.FC = () => {
       missingDimensions: shipments.filter(s => {
         const flags = s.validation_flags || [];
         return flags.includes('missing_dimensions');
+      }).length,
+      invalidShipFromAddress: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_from_address');
+      }).length,
+      invalidShipToAddress: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_to_address');
+      }).length,
+      invalidShipFromCity: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_from_city');
+      }).length,
+      invalidShipToCity: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_to_city');
+      }).length,
+      invalidShipFromPincode: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_from_pincode');
+      }).length,
+      invalidShipToPincode: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_to_pincode');
       }).length,
     };
   };
@@ -794,10 +864,11 @@ const Step2Review: React.FC = () => {
       align: 'center',
       render: (_, record) => {
         const isApproved = record.status === 'ready';
+        const isInvalid = isShipmentInvalid(record);
         const isAnimating = animatingShipments.has(record.id);
 
         const handleApproveClick = async () => {
-          if (isApproved) return;
+          if (isApproved || isInvalid) return;
           
           // Start animation
           setAnimatingShipments(prev => new Set(prev).add(record.id));
@@ -816,8 +887,14 @@ const Step2Review: React.FC = () => {
 
         const menuItems: MenuProps['items'] = [
           {
-            key: 'edit-address',
-            label: 'Edit Address',
+            key: 'edit-from-address',
+            label: 'Edit Ship From Address',
+            icon: <EnvironmentOutlined />,
+            onClick: () => handleEdit(record, 'from'),
+          },
+          {
+            key: 'edit-to-address',
+            label: 'Edit Ship To Address',
             icon: <EnvironmentOutlined />,
             onClick: () => handleEdit(record, 'to'),
           },
@@ -861,16 +938,19 @@ const Step2Review: React.FC = () => {
               type="default"
               size="small"
               onClick={handleApproveClick}
-              disabled={isApproved}
+              disabled={isApproved || isInvalid}
               className={`approve-button ${isAnimating ? 'approve-button-animating' : ''} ${isApproved ? 'approve-button-approved' : ''}`}
               style={{
                 backgroundColor: isApproved ? '#52c41a' : 'transparent',
-                borderColor: isApproved ? '#52c41a' : '#d9d9d9',
-                color: isApproved ? '#fff' : (theme === 'dark' ? '#fff' : '#262626'),
+                borderColor: isApproved ? '#52c41a' : (isInvalid ? '#ff4d4f' : '#d9d9d9'),
+                color: isApproved ? '#fff' : (isInvalid ? '#ff4d4f' : (theme === 'dark' ? '#fff' : '#262626')),
                 fontWeight: 500,
                 minWidth: isApproved ? '95px' : '85px',
                 height: '32px'
+                opacity: isInvalid ? 0.6 : 1,
+                cursor: isInvalid ? 'not-allowed' : 'pointer',
               }}
+              title={isInvalid ? 'Cannot approve: Address is invalid. Please fix the address first.' : (isApproved ? 'Already approved' : 'Approve shipment')}
             >
               {isApproved ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1184,6 +1264,104 @@ const Step2Review: React.FC = () => {
               >
                 Missing Dimensions ({validationCounts.missingDimensions})
               </Button>
+            )}
+            {validationCounts.invalidShipFromAddress > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_from_address' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_from_address') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_from_address' });
+                  }
+                }}
+              >
+                Invalid Ship From Address ({validationCounts.invalidShipFromAddress})
+              </Button>
+            )}
+            {validationCounts.invalidShipToAddress > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_to_address' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_to_address') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_to_address' });
+                  }
+                }}
+              >
+                Invalid Ship To Address ({validationCounts.invalidShipToAddress})
+              </Button>
+            )}
+            {validationCounts.invalidShipFromCity > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_from_city' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_from_city') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_from_city' });
+                  }
+                }}
+              >
+                Invalid Ship From City ({validationCounts.invalidShipFromCity})
+              </Button>
+            )}
+            {validationCounts.invalidShipToCity > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_to_city' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_to_city') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_to_city' });
+                  }
+                }}
+              >
+                Invalid Ship To City ({validationCounts.invalidShipToCity})
+              </Button>
+            )}
+            {validationCounts.invalidShipFromPincode > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_from_pincode' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_from_pincode') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_from_pincode' });
+                  }
+                }}
+              >
+                Invalid Ship From Pincode ({validationCounts.invalidShipFromPincode})
+              </Button>
+            )}
+            {validationCounts.invalidShipToPincode > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_to_pincode' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_to_pincode') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_to_pincode' });
+                  }
+                }}
+              >
+                Invalid Ship To Pincode ({validationCounts.invalidShipToPincode})
+              </Button>
+            )}
+            {Object.values(validationCounts).every(count => count === 0) && (
+              <span style={{ 
+                color: theme === 'dark' ? '#8c8c8c' : '#8c8c8c',
+                fontStyle: 'italic'
+              }}>
+                No validation issues found
+              </span>
             )}
           </div>
           </>

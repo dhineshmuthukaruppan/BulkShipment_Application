@@ -93,14 +93,15 @@ class AddressValidator:
                 return result
         
         # Try SmartyStreets (free tier: 250 lookups/month)
+        # Prioritize SmartyStreets if configured (it's more reliable than basic validation)
         if self.smarty_auth_id and self.smarty_auth_token and self._check_rate_limit('smarty'):
             result = self._validate_smarty(normalized)
-            if result.get('valid'):
-                self._update_rate_limit('smarty')
-                self.logger.log_address_validation(
-                    address_dict, 'SmartyStreets', result, fallback_triggered=True
-                )
-                return result
+            self._update_rate_limit('smarty')
+            # Return result whether valid or invalid - SmartyStreets gives definitive answer
+            self.logger.log_address_validation(
+                address_dict, 'SmartyStreets', result, fallback_triggered=not bool(self.usps_api_key or self.google_api_key)
+            )
+            return result
         
         # Try Lob (free tier: 10,000 verifications/month)
         if self.lob_api_key and self._check_rate_limit('lob'):
@@ -492,10 +493,41 @@ class AddressValidator:
             
             if response.status_code == 200:
                 data = response.json()
+                # SmartyStreets returns empty array [] if address is invalid/not found
                 if data and len(data) > 0:
                     result = data[0]
                     components = result.get('components', {})
                     metadata = result.get('metadata', {})
+                    
+                    # Check if address is deliverable
+                    # SmartyStreets metadata includes precision and RDI (Residential Delivery Indicator)
+                    precision = metadata.get('precision', '')
+                    rdi = metadata.get('rdi', '')
+                    
+                    # If precision is 'Unknown' or RDI indicates undeliverable, mark as invalid
+                    if precision == 'Unknown' or (rdi and rdi not in ['Residential', 'Business', 'Highrise']):
+                        # Only flag specific components if they are actually missing from input
+                        # Don't infer issues just because API couldn't verify them
+                        error_details = []
+                        if not address_dict.get('city') or not address_dict.get('city').strip():
+                            error_details.append('invalid_city')
+                        if not address_dict.get('zip') or not address_dict.get('zip').strip():
+                            error_details.append('invalid_pincode')
+                        if not address_dict.get('address') or not address_dict.get('address').strip():
+                            error_details.append('invalid_street')
+                        # If all fields are present, don't flag specific components
+                        # The address might be valid but not in SmartyStreets database
+                        if not error_details:
+                            error_details = []  # Return empty - let views.py handle as general invalid
+                        
+                        return {
+                            'valid': False,
+                            'api_used': 'SmartyStreets',
+                            'error': 'Address not found or not deliverable',
+                            'error_details': error_details,  # Only specific if fields are missing
+                            'corrected_address': address_dict,
+                            'corrections': []
+                        }
                     
                     corrected = address_dict.copy()
                     corrections = []
@@ -537,6 +569,33 @@ class AddressValidator:
                         'corrections': corrections,
                         'api_used': 'SmartyStreets',
                         'fallback_used': False
+                    }
+                else:
+                    # Empty response means address was not found/invalid
+                    # Only flag specific components if they are actually missing (not just format mismatch)
+                    # Don't flag format issues - the API might not support international formats
+                    error_details = []
+                    if not address_dict.get('address') or not address_dict.get('address').strip():
+                        error_details.append('invalid_street')
+                    if not address_dict.get('city') or not address_dict.get('city').strip():
+                        error_details.append('invalid_city')
+                    if not address_dict.get('zip') or not address_dict.get('zip').strip():
+                        error_details.append('invalid_pincode')
+                    # Don't check format - international addresses may have different formats
+                    # Only flag if field is completely missing
+                    
+                    # If no specific missing fields, it's a general invalid address
+                    # Don't infer specific component issues - the address might be valid but not in SmartyStreets database
+                    if not error_details:
+                        error_details.append('invalid_address')
+                    
+                    return {
+                        'valid': False,
+                        'api_used': 'SmartyStreets',
+                        'error': 'Address not found - invalid address',
+                        'error_details': error_details if error_details != ['invalid_address'] else [],  # Only return specific details if fields are missing
+                        'corrected_address': address_dict,
+                        'corrections': []
                     }
             elif response.status_code == 401:
                 logger.warning("SmartyStreets API authentication failed")
@@ -647,6 +706,7 @@ class AddressValidator:
         """Basic validation using regex patterns (fallback)"""
         corrections = []
         corrected = address_dict.copy()
+        error_details = []
         
         # Validate ZIP code format (5 digits or 5+4)
         zip_code = address_dict.get('zip', '').strip()
@@ -659,6 +719,10 @@ class AddressValidator:
                     if len(zip_digits) > 5:
                         corrected['zip'] = f"{zip_digits[:5]}-{zip_digits[5:9]}"
                     corrections.append('ZIP code formatted')
+                else:
+                    error_details.append('invalid_pincode')
+        else:
+            error_details.append('invalid_pincode')
         
         # Validate state (2-letter abbreviation)
         state = address_dict.get('state', '').strip().upper()
@@ -675,10 +739,21 @@ class AddressValidator:
         required = ['address', 'city', 'state', 'zip']
         is_valid = all(corrected.get(field) for field in required)
         
+        if not is_valid:
+            if not corrected.get('address'):
+                error_details.append('invalid_street')
+            if not corrected.get('city'):
+                error_details.append('invalid_city')
+            if not corrected.get('zip'):
+                error_details.append('invalid_pincode')
+            if not error_details:
+                error_details.append('invalid_address')
+        
         return {
             'valid': is_valid,
             'corrected_address': corrected,
             'corrections': corrections,
             'api_used': 'Basic',
-            'fallback_used': True
+            'fallback_used': True,
+            'error_details': error_details if not is_valid else []
         }

@@ -173,6 +173,45 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                             row_data['from_state'] = default_address.state
                             row_data['from_zip'] = default_address.zip_code
                     
+                    # Validate sender address (if present)
+                    if row_data.get('from_address') or row_data.get('from_city') or row_data.get('from_zip'):
+                        from_address = {
+                            'first_name': row_data.get('from_first_name', ''),
+                            'last_name': row_data.get('from_last_name', ''),
+                            'address': row_data.get('from_address', ''),
+                            'address2': row_data.get('from_address2', ''),
+                            'city': row_data.get('from_city', ''),
+                            'state': row_data.get('from_state', ''),
+                            'zip': row_data.get('from_zip', ''),
+                        }
+                        
+                        from_validation_result = validator.validate(from_address)
+                        if not from_validation_result['valid']:
+                            validation_flags = row_data.get('validation_flags', [])
+                            error_details = from_validation_result.get('error_details', [])
+                            
+                            # Only flag specific components if API explicitly provides error_details
+                            # Don't infer specific issues from generic error messages
+                            if error_details:
+                                # API provided specific error details - use them
+                                for error_detail in error_details:
+                                    if error_detail == 'invalid_city':
+                                        if 'invalid_ship_from_city' not in validation_flags:
+                                            validation_flags.append('invalid_ship_from_city')
+                                    elif error_detail == 'invalid_pincode':
+                                        if 'invalid_ship_from_pincode' not in validation_flags:
+                                            validation_flags.append('invalid_ship_from_pincode')
+                                    elif error_detail == 'invalid_street':
+                                        if 'invalid_ship_from_address' not in validation_flags:
+                                            validation_flags.append('invalid_ship_from_address')
+                            else:
+                                # No specific error details - only flag as general invalid address
+                                # Don't infer specific component issues
+                                if 'invalid_ship_from_address' not in validation_flags:
+                                    validation_flags.append('invalid_ship_from_address')
+                            
+                            row_data['validation_flags'] = validation_flags
+                    
                     # Validate recipient address
                     to_address = {
                         'first_name': row_data.get('to_first_name', ''),
@@ -196,6 +235,40 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                         row_data['address_validated'] = True
                         row_data['address_validation_api_used'] = validation_result['api_used']
                         row_data['address_corrections'] = validation_result.get('corrections', [])
+                    else:
+                        # Address is invalid - flag specific issues only if API provides them
+                        validation_flags = row_data.get('validation_flags', [])
+                        error_details = validation_result.get('error_details', [])
+                        
+                        # Only flag specific components if API explicitly provides error_details
+                        # Don't infer specific issues from generic error messages
+                        if error_details:
+                            # API provided specific error details - use them
+                            for error_detail in error_details:
+                                if error_detail == 'invalid_city':
+                                    if 'invalid_ship_to_city' not in validation_flags:
+                                        validation_flags.append('invalid_ship_to_city')
+                                elif error_detail == 'invalid_pincode':
+                                    if 'invalid_ship_to_pincode' not in validation_flags:
+                                        validation_flags.append('invalid_ship_to_pincode')
+                                elif error_detail == 'invalid_street':
+                                    if 'invalid_ship_to_address' not in validation_flags:
+                                        validation_flags.append('invalid_ship_to_address')
+                        else:
+                            # No specific error details - only flag as general invalid address
+                            # Don't infer specific component issues
+                            if 'invalid_ship_to_address' not in validation_flags:
+                                validation_flags.append('invalid_ship_to_address')
+                        
+                        row_data['validation_flags'] = validation_flags
+                        row_data['address_validated'] = False
+                        row_data['address_validation_api_used'] = validation_result.get('api_used', 'Unknown')
+                        error_message = validation_result.get('error', 'Address could not be validated')
+                        row_data['address_validation_error'] = error_message
+                        # Add to validation errors
+                        validation_errors = row_data.get('validation_errors', [])
+                        validation_errors.append(f"Invalid address: {error_message}")
+                        row_data['validation_errors'] = validation_errors
                     
                     # Create shipment
                     shipment = Shipment.objects.create(
@@ -229,6 +302,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                         address_validated=row_data.get('address_validated', False),
                         address_validation_api_used=row_data.get('address_validation_api_used', ''),
                         address_corrections=row_data.get('address_corrections', []),
+                        address_validation_error=row_data.get('address_validation_error', ''),
                         shipping_provider='USPS',
                         shipping_service='Ground Shipping',
                         process_date=process_date,  # Set process date for dashboard analytics
