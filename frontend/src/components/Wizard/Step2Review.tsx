@@ -1138,8 +1138,8 @@ const Step2Review: React.FC = () => {
             </Space>
           </div>
 
-
-{Object.values(validationCounts).every(count => count !== 0) && (
+          {/* Validation Indicators - Show if any validation issues exist */}
+          {Object.values(validationCounts).some(count => count > 0) && (
           <>
           {/* Validation Indicators */}
           <div style={{ 
