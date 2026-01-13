@@ -125,6 +125,7 @@ class Shipment(models.Model):
     address_validated = models.BooleanField(default=False)
     address_validation_api_used = models.CharField(max_length=50, blank=True)
     address_corrections = models.JSONField(default=list, blank=True)
+    address_validation_error = models.TextField(blank=True, help_text="Error message if address validation failed")
 
     # Process date for dashboard analytics
     process_date = models.DateField(null=True, blank=True, help_text="Date when the order was processed (for dashboard analytics)")
@@ -200,14 +201,20 @@ class Shipment(models.Model):
     def calculate_status(self):
         """
         Auto-calculate status based on validation and completeness:
-        - 'invalid': Required data missing (validation_errors exist)
+        - 'invalid': Required data missing (validation_errors exist) or invalid address
         - 'needs_review_address': Address not reviewed yet
         - 'needs_review_package': Package not reviewed yet
         - 'needs_review': Neither address nor package reviewed
         - 'ready': Both address and package have been reviewed
         """
-        # Check for validation errors (required data missing)
-        if self.validation_errors:
+        # Check for validation errors (required data missing) or invalid address
+        validation_flags = self.validation_flags or []
+        invalid_flags = [
+            'invalid_address', 'invalid_ship_from_address', 'invalid_ship_to_address',
+            'invalid_ship_from_city', 'invalid_ship_to_city',
+            'invalid_ship_from_pincode', 'invalid_ship_to_pincode'
+        ]
+        if self.validation_errors or any(flag in validation_flags for flag in invalid_flags):
             return 'invalid'
         
         # Check required fields completeness first

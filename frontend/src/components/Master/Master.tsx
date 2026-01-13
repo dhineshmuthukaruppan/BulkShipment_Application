@@ -48,7 +48,16 @@ interface MasterProps {}
 const USER_BALANCE_KEY = 'shipping_pro_user_balance';
 
 const Master: React.FC<MasterProps> = () => {
-  const [activeTab, setActiveTab] = useState('ship-from');
+  // Check localStorage for desired tab on mount
+  const [activeTab, setActiveTab] = useState(() => {
+    const savedTab = localStorage.getItem('master_active_tab');
+    if (savedTab === 'ship-from' || savedTab === 'ship-to') {
+      // Clear the stored tab after reading it
+      localStorage.removeItem('master_active_tab');
+      return savedTab;
+    }
+    return 'ship-from';
+  });
   const [shipFromAddresses, setShipFromAddresses] = useState<SavedAddress[]>([]);
   const [shipToAddresses, setShipToAddresses] = useState<SavedAddress[]>([]);
   const [packages, setPackages] = useState<SavedPackage[]>([]);

@@ -373,7 +373,7 @@ const Step3Shipping: React.FC = () => {
                 icon={<ArrowLeftOutlined />}
                 onClick={() => dispatch(setCurrentStep(2))}
               >
-                Step 2
+                Back
               </Button>
               <Button
                 type="primary"

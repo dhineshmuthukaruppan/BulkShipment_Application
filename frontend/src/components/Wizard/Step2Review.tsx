@@ -13,6 +13,8 @@ import {
   Popconfirm,
   Dropdown,
   MenuProps,
+  Alert,
+  Spin,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -27,6 +29,7 @@ import {
   SaveOutlined,
   FilterOutlined,
   CheckOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -63,6 +66,7 @@ const Step2Review: React.FC = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [animatingShipments, setAnimatingShipments] = useState<Set<number>>(new Set());
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [filters, setFilters] = useState<{
     status?: string;
     shipFromAddress?: string;
@@ -76,7 +80,10 @@ const Step2Review: React.FC = () => {
     loadSavedData();
   }, []);
 
-  const loadSavedData = async () => {
+  const loadSavedData = async (showLoading = false) => {
+    if (showLoading) {
+      setLoadingAddresses(true);
+    }
     try {
       const [fromAddresses, toAddresses, packages] = await Promise.all([
         savedAddressService.getAll('from'),
@@ -88,6 +95,24 @@ const Step2Review: React.FC = () => {
       setSavedPackages(packages);
     } catch (error) {
       console.error('Failed to load saved data:', error);
+      message.error('Failed to load saved addresses');
+    } finally {
+      if (showLoading) {
+        setLoadingAddresses(false);
+      }
+    }
+  };
+
+  const navigateToMaster = (tab: 'ship-from' | 'ship-to') => {
+    // Store the desired tab in localStorage
+    localStorage.setItem('master_active_tab', tab);
+    // Navigate to master page
+    localStorage.setItem('shipping_pro_selected_page', 'master');
+    // Open Master page in a new tab
+    const newWindow = window.open(window.location.origin + window.location.pathname, '_blank');
+    if (!newWindow) {
+      // Fallback if popup is blocked
+      message.warning('Please allow popups to open Master page in a new tab');
     }
   };
 
@@ -347,6 +372,12 @@ const Step2Review: React.FC = () => {
       return; // Already approved
     }
 
+    // Don't allow approval if shipment is invalid
+    if (isShipmentInvalid(shipment)) {
+      message.warning('Cannot approve shipment with invalid address. Please fix the address first.');
+      return;
+    }
+
     try {
       const updated = await shipmentService.updateShipment(shipment.id, { status: 'ready' });
       dispatch(updateShipment(updated));
@@ -364,13 +395,25 @@ const Step2Review: React.FC = () => {
     }
 
     try {
-      // Filter out already approved shipments
+      // Filter out already approved shipments and invalid shipments
       const toApprove = shipments.filter(
-        s => selectedShipments.includes(s.id) && s.status !== 'ready'
+        s => selectedShipments.includes(s.id) && s.status !== 'ready' && !isShipmentInvalid(s)
       );
 
+      const invalidShipments = shipments.filter(
+        s => selectedShipments.includes(s.id) && isShipmentInvalid(s)
+      );
+
+      if (invalidShipments.length > 0) {
+        message.warning(
+          `${invalidShipments.length} selected shipment${invalidShipments.length > 1 ? 's have' : ' has'} invalid address${invalidShipments.length > 1 ? 'es' : ''}. Please fix the address${invalidShipments.length > 1 ? 'es' : ''} first.`
+        );
+      }
+
       if (toApprove.length === 0) {
-        message.info('All selected shipments are already approved');
+        if (invalidShipments.length === 0) {
+          message.info('All selected shipments are already approved');
+        }
         return;
       }
 
@@ -436,7 +479,11 @@ const Step2Review: React.FC = () => {
       fontSize: '11px', 
       padding: '2px 8px', 
       lineHeight: '18px',
-      margin: 0 
+      margin: 0,
+      wordBreak: 'break-word' as const,
+      overflowWrap: 'break-word' as const,
+      whiteSpace: 'normal' as const,
+      maxWidth: '100%',
     };
     
     const tagProps: any = {
@@ -548,6 +595,28 @@ const Step2Review: React.FC = () => {
     { value: 'invalid', label: 'Invalid' },
   ];
 
+  // Helper function to check if shipment is invalid (has invalid status or invalid address flags)
+  const isShipmentInvalid = (shipment: Shipment): boolean => {
+    // Check if status is invalid
+    if (shipment.status === 'invalid') {
+      return true;
+    }
+    
+    // Check if there are any invalid address flags
+    const flags = shipment.validation_flags || [];
+    const invalidAddressFlags = [
+      'invalid_ship_from_address',
+      'invalid_ship_to_address',
+      'invalid_ship_from_city',
+      'invalid_ship_to_city',
+      'invalid_ship_from_pincode',
+      'invalid_ship_to_pincode',
+      'invalid_address', // General invalid address flag
+    ];
+    
+    return invalidAddressFlags.some(flag => flags.includes(flag));
+  };
+
   // Helper function to check if shipment has a specific validation issue
   const hasValidationIssue = (shipment: Shipment, issue: string): boolean => {
     const flags = shipment.validation_flags || [];
@@ -562,6 +631,12 @@ const Step2Review: React.FC = () => {
       'missing_pincode': ['missing_pincode'],
       'missing_weight': ['missing_weight'],
       'missing_dimensions': ['missing_dimensions'],
+      'invalid_ship_from_address': ['invalid_ship_from_address'],
+      'invalid_ship_to_address': ['invalid_ship_to_address'],
+      'invalid_ship_from_city': ['invalid_ship_from_city'],
+      'invalid_ship_to_city': ['invalid_ship_to_city'],
+      'invalid_ship_from_pincode': ['invalid_ship_from_pincode'],
+      'invalid_ship_to_pincode': ['invalid_ship_to_pincode'],
     };
     
     const relatedFlags = issueMap[issue] || [issue];
@@ -606,6 +681,30 @@ const Step2Review: React.FC = () => {
       missingDimensions: shipments.filter(s => {
         const flags = s.validation_flags || [];
         return flags.includes('missing_dimensions');
+      }).length,
+      invalidShipFromAddress: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_from_address');
+      }).length,
+      invalidShipToAddress: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_to_address');
+      }).length,
+      invalidShipFromCity: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_from_city');
+      }).length,
+      invalidShipToCity: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_to_city');
+      }).length,
+      invalidShipFromPincode: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_from_pincode');
+      }).length,
+      invalidShipToPincode: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('invalid_ship_to_pincode');
       }).length,
     };
   };
@@ -664,6 +763,13 @@ const Step2Review: React.FC = () => {
       sortDirections: ['ascend', 'descend'],
       showSorterTooltip: false,
       render: (status: string, record: Shipment) => getStatusTag(status, record),
+      onCell: () => ({
+        style: {
+          wordBreak: 'break-word',
+          overflowWrap: 'break-word',
+          whiteSpace: 'normal',
+        },
+      }),
     },
     {
       title: 'Ship From Address',
@@ -753,15 +859,16 @@ const Step2Review: React.FC = () => {
     },
     {
       title: 'Actions',
-      width: 150,
+      width: 200,
       fixed: 'right',
       align: 'center',
       render: (_, record) => {
         const isApproved = record.status === 'ready';
+        const isInvalid = isShipmentInvalid(record);
         const isAnimating = animatingShipments.has(record.id);
 
         const handleApproveClick = async () => {
-          if (isApproved) return;
+          if (isApproved || isInvalid) return;
           
           // Start animation
           setAnimatingShipments(prev => new Set(prev).add(record.id));
@@ -780,8 +887,14 @@ const Step2Review: React.FC = () => {
 
         const menuItems: MenuProps['items'] = [
           {
-            key: 'edit-address',
-            label: 'Edit Address',
+            key: 'edit-from-address',
+            label: 'Edit Ship From Address',
+            icon: <EnvironmentOutlined />,
+            onClick: () => handleEdit(record, 'from'),
+          },
+          {
+            key: 'edit-to-address',
+            label: 'Edit Ship To Address',
             icon: <EnvironmentOutlined />,
             onClick: () => handleEdit(record, 'to'),
           },
@@ -822,25 +935,22 @@ const Step2Review: React.FC = () => {
           <Space size="small">
             {/* Approve/Approved Button */}
             <Button
-              type={isApproved ? 'default' : 'default'}
+              type="default"
               size="small"
               onClick={handleApproveClick}
-              disabled={isApproved}
-              className={isAnimating ? 'approve-button-animating' : isApproved ? 'approve-button-approved' : ''}
+              disabled={isApproved || isInvalid}
+              className={`approve-button ${isAnimating ? 'approve-button-animating' : ''} ${isApproved ? 'approve-button-approved' : ''}`}
               style={{
                 backgroundColor: isApproved ? '#52c41a' : 'transparent',
-                borderColor: isApproved ? '#52c41a' : '#d9d9d9',
-                color: isApproved ? '#fff' : (theme === 'dark' ? '#fff' : '#262626'),
+                borderColor: isApproved ? '#52c41a' : (isInvalid ? '#ff4d4f' : '#d9d9d9'),
+                color: isApproved ? '#fff' : (isInvalid ? '#ff4d4f' : (theme === 'dark' ? '#fff' : '#262626')),
                 fontWeight: 500,
                 minWidth: isApproved ? '95px' : '85px',
-                height: '32px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: isApproved ? '0 2px 4px rgba(82, 196, 26, 0.2)' : 'none',
+                height: '32px'
+                opacity: isInvalid ? 0.6 : 1,
+                cursor: isInvalid ? 'not-allowed' : 'pointer',
               }}
+              title={isInvalid ? 'Cannot approve: Address is invalid. Please fix the address first.' : (isApproved ? 'Already approved' : 'Approve shipment')}
             >
               {isApproved ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1016,7 +1126,7 @@ const Step2Review: React.FC = () => {
                   });
                 }}
               >
-                Step 1
+                Back
               </Button>
               <Button
                 type="primary"
@@ -1028,6 +1138,9 @@ const Step2Review: React.FC = () => {
             </Space>
           </div>
 
+
+{Object.values(validationCounts).every(count => count !== 0) && (
+          <>
           {/* Validation Indicators */}
           <div style={{ 
             marginBottom: 16, 
@@ -1152,6 +1265,96 @@ const Step2Review: React.FC = () => {
                 Missing Dimensions ({validationCounts.missingDimensions})
               </Button>
             )}
+            {validationCounts.invalidShipFromAddress > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_from_address' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_from_address') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_from_address' });
+                  }
+                }}
+              >
+                Invalid Ship From Address ({validationCounts.invalidShipFromAddress})
+              </Button>
+            )}
+            {validationCounts.invalidShipToAddress > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_to_address' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_to_address') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_to_address' });
+                  }
+                }}
+              >
+                Invalid Ship To Address ({validationCounts.invalidShipToAddress})
+              </Button>
+            )}
+            {validationCounts.invalidShipFromCity > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_from_city' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_from_city') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_from_city' });
+                  }
+                }}
+              >
+                Invalid Ship From City ({validationCounts.invalidShipFromCity})
+              </Button>
+            )}
+            {validationCounts.invalidShipToCity > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_to_city' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_to_city') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_to_city' });
+                  }
+                }}
+              >
+                Invalid Ship To City ({validationCounts.invalidShipToCity})
+              </Button>
+            )}
+            {validationCounts.invalidShipFromPincode > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_from_pincode' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_from_pincode') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_from_pincode' });
+                  }
+                }}
+              >
+                Invalid Ship From Pincode ({validationCounts.invalidShipFromPincode})
+              </Button>
+            )}
+            {validationCounts.invalidShipToPincode > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid_ship_to_pincode' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid_ship_to_pincode') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid_ship_to_pincode' });
+                  }
+                }}
+              >
+                Invalid Ship To Pincode ({validationCounts.invalidShipToPincode})
+              </Button>
+            )}
             {Object.values(validationCounts).every(count => count === 0) && (
               <span style={{ 
                 color: theme === 'dark' ? '#8c8c8c' : '#8c8c8c',
@@ -1161,6 +1364,8 @@ const Step2Review: React.FC = () => {
               </span>
             )}
           </div>
+          </>
+          )}
 
           {/* Bulk Actions Toolbar */}
           {hasSelected && (
@@ -1314,37 +1519,79 @@ const Step2Review: React.FC = () => {
           </Button>,
         ]}
       >
-        <div style={{ marginBottom: 16 }}>
-          <p>Select a saved address to apply to all selected shipments:</p>
-        </div>
-        <Select
-          style={{ width: '100%' }}
-          placeholder="Search or select saved address"
-          showSearch
-          filterOption={(input, option) => {
-            const searchText = input.toLowerCase();
-            const optionText = String(option?.label || option?.children || '').toLowerCase();
-            return optionText.includes(searchText);
-          }}
-          onChange={(value) => {
-            handleBulkAddressChange(value, 'from');
-            setBulkActionModal(null);
-          }}
-        >
-          {savedAddresses.map(addr => {
-            const fullAddress = [
-              addr.name,
-              addr.address,
-              addr.address2,
-              `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
-            ].filter(Boolean).join(', ');
-            return (
-              <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
-                {fullAddress}
-              </Select.Option>
-            );
-          })}
-        </Select>
+        {savedAddresses.length === 0 ? (
+          <div>
+            <Alert
+              message="No Ship From Addresses Available"
+              description={
+                <div>
+                  <p>Please add the address to change the address for selected shipments.</p>
+                  <Space style={{ marginTop: 12 }}>
+                    <Button 
+                      type="primary" 
+                      onClick={() => navigateToMaster('ship-from')}
+                    >
+                      Go to Master - Add Ship From Address
+                    </Button>
+                    <Button 
+                      icon={<ReloadOutlined />}
+                      onClick={() => loadSavedData(true)}
+                      loading={loadingAddresses}
+                    >
+                      Reload
+                    </Button>
+                    {loadingAddresses && <Spin size="small" style={{ marginLeft: 8 }} />}
+                  </Space>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ margin: 0 }}>Select a saved address to apply to all selected shipments:</p>
+              <Button 
+                icon={<ReloadOutlined />}
+                size="small"
+                onClick={() => loadSavedData(true)}
+                loading={loadingAddresses}
+              >
+                Reload
+              </Button>
+            </div>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="Search or select saved address"
+              showSearch
+              filterOption={(input, option) => {
+                const searchText = input.toLowerCase();
+                const optionText = String(option?.label || option?.children || '').toLowerCase();
+                return optionText.includes(searchText);
+              }}
+              onChange={(value) => {
+                handleBulkAddressChange(value, 'from');
+                setBulkActionModal(null);
+              }}
+            >
+              {savedAddresses.map(addr => {
+                const fullAddress = [
+                  addr.name,
+                  addr.address,
+                  addr.address2,
+                  `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
+                ].filter(Boolean).join(', ');
+                return (
+                  <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
+                    {fullAddress}
+                  </Select.Option>
+                );
+              })}
+            </Select>
+          </>
+        )}
       </Modal>
 
       <Modal
@@ -1367,37 +1614,79 @@ const Step2Review: React.FC = () => {
           </Button>,
         ]}
       >
-        <div style={{ marginBottom: 16 }}>
-          <p>Select a saved address to apply to all selected shipments:</p>
-        </div>
-        <Select
-          style={{ width: '100%' }}
-          placeholder="Search or select saved address"
-          showSearch
-          filterOption={(input, option) => {
-            const searchText = input.toLowerCase();
-            const optionText = String(option?.label || option?.children || '').toLowerCase();
-            return optionText.includes(searchText);
-          }}
-          onChange={(value) => {
-            handleBulkAddressChange(value, 'to');
-            setBulkActionModal(null);
-          }}
-        >
-          {savedToAddresses.map(addr => {
-            const fullAddress = [
-              addr.name,
-              addr.address,
-              addr.address2,
-              `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
-            ].filter(Boolean).join(', ');
-            return (
-              <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
-                {fullAddress}
-              </Select.Option>
-            );
-          })}
-        </Select>
+        {savedToAddresses.length === 0 ? (
+          <div>
+            <Alert
+              message="No Ship To Addresses Available"
+              description={
+                <div>
+                  <p>Please add the address to change the address for selected shipments.</p>
+                  <Space style={{ marginTop: 12 }}>
+                    <Button 
+                      type="primary" 
+                      onClick={() => navigateToMaster('ship-to')}
+                    >
+                      Go to Master - Add Ship To Address
+                    </Button>
+                    <Button 
+                      icon={<ReloadOutlined />}
+                      onClick={() => loadSavedData(true)}
+                      loading={loadingAddresses}
+                    >
+                      Reload
+                    </Button>
+                    {loadingAddresses && <Spin size="small" style={{ marginLeft: 8 }} />}
+                  </Space>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          </div>
+        ) : (
+          <>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ margin: 0 }}>Select a saved address to apply to all selected shipments:</p>
+              <Button 
+                icon={<ReloadOutlined />}
+                size="small"
+                onClick={() => loadSavedData(true)}
+                loading={loadingAddresses}
+              >
+                Reload
+              </Button>
+            </div>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="Search or select saved address"
+              showSearch
+              filterOption={(input, option) => {
+                const searchText = input.toLowerCase();
+                const optionText = String(option?.label || option?.children || '').toLowerCase();
+                return optionText.includes(searchText);
+              }}
+              onChange={(value) => {
+                handleBulkAddressChange(value, 'to');
+                setBulkActionModal(null);
+              }}
+            >
+              {savedToAddresses.map(addr => {
+                const fullAddress = [
+                  addr.name,
+                  addr.address,
+                  addr.address2,
+                  `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
+                ].filter(Boolean).join(', ');
+                return (
+                  <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
+                    {fullAddress}
+                  </Select.Option>
+                );
+              })}
+            </Select>
+          </>
+        )}
       </Modal>
 
       <Modal
@@ -1619,470 +1908,15 @@ const Step2Review: React.FC = () => {
         <p>Are you sure you want to delete this shipment? This action cannot be undone.</p>
       </Modal>
 
-      {/* Custom CSS for table styling - key forces re-render on theme change */}
-      <style key={theme}>{`
-        /* Checkbox styling for dark mode */
-        .ant-checkbox-inner {
-          border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
-          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
-        }
-        
-        .ant-checkbox:hover .ant-checkbox-inner {
-          border-color: #1890ff !important;
-        }
-        
-        .ant-checkbox-checked .ant-checkbox-inner {
-          border-color: #1890ff !important;
-          background-color: #1890ff !important;
-        }
-        
-        .ant-checkbox-checked .ant-checkbox-inner::after {
-          border-color: #fff !important;
-          opacity: 1 !important;
-          display: block !important;
-          visibility: visible !important;
-        }
-        
-        .ant-table-selection-column .ant-checkbox-inner {
-          border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
-          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
-        }
-        
-        .ant-table-selection-column .ant-checkbox:hover .ant-checkbox-inner {
-          border-color: #1890ff !important;
-        }
-        
-        .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner {
-          border-color: #1890ff !important;
-          background-color: #1890ff !important;
-        }
-        
-        .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner::after {
-          border-color: #fff !important;
-          opacity: 1 !important;
-          display: block !important;
-          visibility: visible !important;
-        }
-        
-        /* Ensure checkbox tick mark is properly visible */
-        .ant-checkbox-checked .ant-checkbox-inner::after,
-        .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner::after {
-          width: 5.71428571px !important;
-          height: 9.14285714px !important;
-          top: 50% !important;
-          left: 22% !important;
-          border: 2px solid #fff !important;
-          border-top: 0 !important;
-          border-left: 0 !important;
-          transform: rotate(45deg) scale(1) translate(-50%, -50%) !important;
-        }
-        
-        /* Dropdown arrow visibility */
-        .ant-select-arrow {
-          color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
-        }
-        
-        .ant-select:hover .ant-select-arrow {
-          color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
-        }
-        
-        /* Select component text color */
-        .ant-select-selector {
-          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
-        }
-        
-        .ant-select-selection-item {
-          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
-        }
-        
-        .ant-table-thead > tr > th {
-          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
-          font-weight: 600;
-          border-bottom: 2px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
-          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
-        }
-        
-        /* Remove default sorted column background color - keep same as other headers */
-        .ant-table-thead > tr > th.ant-table-column-sort {
-          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
-        }
-        
-        /* Better sorted column indicator - only border indicators, no color change */
-        .ant-table-thead > tr > th.ant-table-column-sort {
-          border-bottom: 3px solid #1890ff !important;
-          position: relative;
-          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
-        }
-        
-        /* Add a subtle left border indicator for sorted columns */
-        .ant-table-thead > tr > th.ant-table-column-sort::before {
-          content: '';
-          position: absolute;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          width: 3px;
-          background-color: #1890ff;
-        }
-        
-        /* Enhance sort icons visibility - make them blue */
-        .ant-table-thead > tr > th .ant-table-column-sorter {
-          color: #8c8c8c;
-        }
-        
-        .ant-table-thead > tr > th.ant-table-column-sort .ant-table-column-sorter {
-          color: #1890ff;
-        }
-        
-        /* Ensure no hover or click color change on column headers */
-        .ant-table-thead > tr > th:hover {
-          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
-        }
-        
-        .ant-table-thead > tr > th.ant-table-column-sort:hover {
-          background: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'} !important;
-        }
-        
-        /* Disable pointer cursor on column header text */
-        .ant-table-thead > tr > th {
-          cursor: default;
-        }
-        
-        /* Only sort icons should be clickable and show pointer */
-        .ant-table-thead > tr > th .ant-table-column-sorter {
-          cursor: pointer;
-          pointer-events: auto;
-        }
-        
-        /* Prevent header click from triggering sort - disable clicks on header */
-        .ant-table-thead > tr > th {
-          pointer-events: none;
-        }
-        
-        /* Re-enable pointer events only for sort icons */
-        .ant-table-thead > tr > th .ant-table-column-sorter {
-          pointer-events: auto;
-        }
-        
-        /* Re-enable for checkbox column - both header and body */
-        .ant-table-thead > tr > th.ant-table-selection-column,
-        .ant-table-tbody > tr > td.ant-table-selection-column {
-          pointer-events: auto !important;
-        }
-        
-        /* Ensure checkboxes are clickable and visible */
-        .ant-table-selection-column .ant-checkbox-wrapper,
-        .ant-table-selection-column .ant-checkbox,
-        .ant-table-selection-column .ant-checkbox-inner {
-          pointer-events: auto !important;
-          cursor: pointer !important;
-          z-index: 1;
-        }
-        
-        /* Ensure checkbox input is also clickable */
-        .ant-table-selection-column .ant-checkbox-input {
-          pointer-events: auto !important;
-          cursor: pointer !important;
-        }
-        
-        .ant-table-tbody > tr > td {
-          border-bottom: 1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'};
-          color: ${theme === 'dark' ? '#fff' : '#262626'} !important;
-        }
-        
-        /* Alternating row backgrounds for readability */
-        .ant-table-tbody > tr.table-row-even > td {
-          background-color: ${theme === 'dark' ? '#1f1f1f' : '#fafafa'};
-        }
-        
-        .ant-table-tbody > tr.table-row-even:hover > td {
-          background-color: ${theme === 'dark' ? '#262626' : '#f0f0f0'};
-        }
-        
-        /* Clear visual distinction for selected rows */
-        .selected-row {
-          background-color: ${theme === 'dark' ? '#111b26' : '#e6f7ff'} !important;
-          border-left: 3px solid #1890ff !important;
-        }
-        
-        .selected-row:hover {
-          background-color: ${theme === 'dark' ? '#1a2f47' : '#bae7ff'} !important;
-        }
-        
-        .ant-table-tbody > tr:hover > td {
-          background-color: ${theme === 'dark' ? '#262626' : '#f5f5f5'};
-        }
-        
-        /* Status indicators - ensure they're immediately recognizable */
-        .ant-tag {
-          font-weight: 500;
-          padding: 4px 12px;
-          border-radius: 4px;
-          font-size: 12px;
-        }
-        
-        .ant-btn-text:hover {
-          background-color: rgba(0, 0, 0, 0.04);
-        }
-
-        /* Dropdown menu styling */
-        .action-dropdown .ant-dropdown-menu {
-          padding: 4px 0;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .action-dropdown .ant-dropdown-menu-item {
-          padding: 10px 16px;
-          margin: 2px 4px;
-          border-radius: 4px;
-          font-size: 14px;
-          line-height: 1.5;
-          transition: all 0.2s;
-        }
-
-        .action-dropdown .ant-dropdown-menu-item:hover {
-          background-color: ${theme === 'dark' ? '#262626' : '#f5f5f5'};
-        }
-        
-        .action-dropdown .ant-dropdown-menu-item-danger {
-          color: #ff4d4f;
-        }
-        
-        .action-dropdown .ant-dropdown-menu-item-danger:hover {
-          background-color: ${theme === 'dark' ? '#2a1215' : '#fff1f0'};
-          color: #ff4d4f;
-        }
-        
-        /* Action button visibility in dark mode */
-        .ant-btn-dangerous {
-          color: ${theme === 'dark' ? '#ff4d4f' : '#ff4d4f'} !important;
-        }
-        
-        .ant-btn-dangerous:hover {
-          color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
-          border-color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
-        }
-
-        .action-dropdown .ant-dropdown-menu-item-icon {
-          margin-right: 12px;
-          font-size: 16px;
-        }
-
-        .action-dropdown .ant-dropdown-menu-item-divider {
-          margin: 4px 0;
-        }
-        
-        /* Approve button animation */
-        @keyframes approvePulse {
-          0% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.7);
-          }
-          30% {
-            transform: scale(1.08);
-            box-shadow: 0 0 0 6px rgba(82, 196, 26, 0.4);
-          }
-          60% {
-            transform: scale(1.05);
-            box-shadow: 0 0 0 10px rgba(82, 196, 26, 0);
-          }
-          100% {
-            transform: scale(1);
-            box-shadow: 0 2px 4px rgba(82, 196, 26, 0.2);
-          }
-        }
-        
-        @keyframes approveSuccess {
-          0% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
-          50% {
-            transform: scale(1.15) rotate(5deg);
-            opacity: 0.95;
-          }
-          100% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
-        }
-        
-        .approve-button-animating {
-          animation: approvePulse 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-        
-        .approve-button-approved {
-          position: relative;
-        }
-        
-        .approve-button-approved::before {
-          content: '';
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          width: 0;
-          height: 0;
-          border-radius: 50%;
-          background: rgba(82, 196, 26, 0.3);
-          transform: translate(-50%, -50%);
-          animation: approveRipple 0.6s ease-out;
-        }
-        
-        @keyframes approveRipple {
-          0% {
-            width: 0;
-            height: 0;
-            opacity: 1;
-          }
-          100% {
-            width: 100px;
-            height: 100px;
-            opacity: 0;
-          }
-        }
-        
-        /* Hover effect for approve button */
-        .ant-btn:not(:disabled):hover:not(.approve-button-approved) {
+      {/* Custom CSS for approve button hover effect */}
+      <style>{`
+        .approve-button:not(.approve-button-approved):not(:disabled):hover {
           border-color: #52c41a !important;
           color: #52c41a !important;
         }
         
-        /* Professional bulk action buttons - Ant Design default style */
-        .bulk-action-btn {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-          border-radius: 6px !important;
-          font-weight: 400 !important;
-          box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02) !important;
-        }
-        
-        .bulk-action-btn:hover {
-          transform: translateY(-1px) !important;
-          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12) !important;
-          border-color: #40a9ff !important;
-          color: #40a9ff !important;
-        }
-        
-        .bulk-action-btn:active {
-          transform: translateY(0) !important;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08) !important;
-        }
-        
-        .bulk-action-btn:focus {
-          border-color: #40a9ff !important;
-          color: #40a9ff !important;
-          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
-        }
-        
-        /* Approve All button - green accent */
-        .approve-all-btn {
-          border-color: #52c41a !important;
+        .approve-button:not(.approve-button-approved):not(:disabled):hover .anticon {
           color: #52c41a !important;
-        }
-        
-        .approve-all-btn:hover {
-          border-color: #73d13d !important;
-          color: #73d13d !important;
-          background-color: rgba(82, 196, 26, 0.06) !important;
-        }
-        
-        .approve-all-btn:focus {
-          border-color: #52c41a !important;
-          color: #52c41a !important;
-          box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.2) !important;
-        }
-        
-        .approve-all-btn:active {
-          border-color: #389e0d !important;
-          color: #389e0d !important;
-          background-color: rgba(82, 196, 26, 0.1) !important;
-        }
-        
-        .approve-all-btn .anticon {
-          color: #52c41a !important;
-          transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-        
-        .approve-all-btn:hover .anticon {
-          color: #73d13d !important;
-        }
-        
-        /* Delete button - red accent */
-        .delete-btn {
-          border-color: #ff4d4f !important;
-          color: #ff4d4f !important;
-        }
-        
-        .delete-btn:hover {
-          border-color: #ff7875 !important;
-          color: #ff7875 !important;
-          background-color: rgba(255, 77, 79, 0.06) !important;
-        }
-        
-        .delete-btn:focus {
-          border-color: #ff4d4f !important;
-          color: #ff4d4f !important;
-          box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2) !important;
-        }
-        
-        .delete-btn:active {
-          border-color: #cf1322 !important;
-          color: #cf1322 !important;
-          background-color: rgba(255, 77, 79, 0.1) !important;
-        }
-        
-        /* Approve All button animation */
-        .approve-all-button-animating {
-          animation: approvePulse 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-        
-        /* Validation issue buttons - warning color for missing items */
-        .validation-issue-btn {
-          border-color: #faad14 !important;
-          color: #faad14 !important;
-          background-color: transparent !important;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        }
-        
-        .validation-issue-btn:hover {
-          border-color: #ffc53d !important;
-          color: #ffc53d !important;
-          background-color: rgba(250, 173, 20, 0.08) !important;
-          transform: translateY(-1px) !important;
-          box-shadow: 0 2px 4px rgba(250, 173, 20, 0.2) !important;
-        }
-        
-        .validation-issue-btn:active {
-          border-color: #d48806 !important;
-          color: #d48806 !important;
-          background-color: rgba(250, 173, 20, 0.12) !important;
-          transform: translateY(0) !important;
-        }
-        
-        .validation-issue-btn:focus {
-          border-color: #faad14 !important;
-          color: #faad14 !important;
-          box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.2) !important;
-        }
-        
-        /* Active state for validation issue buttons */
-        .validation-issue-btn-active {
-          background-color: #faad14 !important;
-          border-color: #faad14 !important;
-          color: #fff !important;
-        }
-        
-        .validation-issue-btn-active:hover {
-          background-color: #ffc53d !important;
-          border-color: #ffc53d !important;
-          color: #fff !important;
-        }
-        
-        .validation-issue-btn-active:focus {
-          background-color: #faad14 !important;
-          border-color: #faad14 !important;
-          color: #fff !important;
-          box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.3) !important;
         }
       `}</style>
     </div>

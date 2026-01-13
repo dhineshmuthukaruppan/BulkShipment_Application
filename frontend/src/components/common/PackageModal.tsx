@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Modal, Form, Input, InputNumber, Typography, Tag, Divider, Space } from 'antd';
+import { Modal, Form, Input, InputNumber, Typography, Tag, Divider, Space, Row, Col } from 'antd';
 import { Shipment } from '../../types/shipment';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -61,6 +61,8 @@ const PackageModal: React.FC<PackageModalProps> = ({
       cancelText="Cancel"
     >
       <Form form={form} layout="vertical" aria-label="Edit Package Details">
+        <Row gutter={16}>
+          <Col span={24}>
         <Form.Item 
           label="Item ID / SKU" 
           name="item_sku"
@@ -72,17 +74,21 @@ const PackageModal: React.FC<PackageModalProps> = ({
             aria-label="Item SKU"
           />
         </Form.Item>
+        </Col>
+        </Row>
 
-        <Form.Item label="Dimensions (inches)" required>
-          <Input.Group compact>
+        <Form.Item label="Dimensions (inches)" style={{ marginBottom: 16 }}>
+          <Row gutter={8}>
+            <Col span={8}>
             <Form.Item
+              label="Length"
               name="length"
               rules={[
                 { required: true, message: 'Length is required' },
                 {
                   validator: (_, value) => {
-                    if (value == null) {
-                      return Promise.reject(new Error('Length is required'));
+                    if (value == null || value === '') {
+                      return Promise.resolve(); // Let required rule handle this
                     }
                     const numValue = Number(value);
                     if (isNaN(numValue) || numValue <= 0) {
@@ -95,27 +101,31 @@ const PackageModal: React.FC<PackageModalProps> = ({
                   }
                 }
               ]}
-              style={{ width: '33%', marginRight: '8px' }}
               hasFeedback
+              style={{ marginBottom: 0 }}
             >
               <InputNumber 
+                type="number"
+                style={{ width: '100%' }}
                 placeholder="Length" 
                 min={0.01} 
                 max={108}
                 step={0.1} 
-                style={{ width: '100%' }}
                 aria-label="Length in inches"
                 aria-required="true"
               />
             </Form.Item>
+            </Col>
+            <Col span={8}>
             <Form.Item
+              label="Width"
               name="width"
               rules={[
                 { required: true, message: 'Width is required' },
                 {
                   validator: (_, value) => {
-                    if (value == null) {
-                      return Promise.reject(new Error('Width is required'));
+                    if (value == null || value === '') {
+                      return Promise.resolve(); // Let required rule handle this
                     }
                     const numValue = Number(value);
                     if (isNaN(numValue) || numValue <= 0) {
@@ -128,27 +138,31 @@ const PackageModal: React.FC<PackageModalProps> = ({
                   }
                 }
               ]}
-              style={{ width: '33%', marginRight: '8px' }}
               hasFeedback
+              style={{ marginBottom: 0 }}
             >
               <InputNumber 
+                type="number"
+                style={{ width: '100%' }}
                 placeholder="Width" 
                 min={0.01} 
                 max={108}
                 step={0.1} 
-                style={{ width: '100%' }}
                 aria-label="Width in inches"
                 aria-required="true"
               />
             </Form.Item>
+            </Col>
+            <Col span={8}>
             <Form.Item
+              label="Height"
               name="height"
               rules={[
                 { required: true, message: 'Height is required' },
                 {
                   validator: (_, value) => {
-                    if (value == null) {
-                      return Promise.reject(new Error('Height is required'));
+                    if (value == null || value === '') {
+                      return Promise.resolve(); // Let required rule handle this
                     }
                     const numValue = Number(value);
                     if (isNaN(numValue) || numValue <= 0) {
@@ -161,32 +175,36 @@ const PackageModal: React.FC<PackageModalProps> = ({
                   }
                 }
               ]}
-              style={{ width: '33%' }}
               hasFeedback
+              style={{ marginBottom: 0 }}
             >
               <InputNumber 
+                type="number"
+                style={{ width: '100%' }}
                 placeholder="Height" 
                 min={0.01} 
                 max={108}
                 step={0.1} 
-                style={{ width: '100%' }}
                 aria-label="Height in inches"
                 aria-required="true"
               />
             </Form.Item>
-          </Input.Group>
+            </Col>
+          </Row>
         </Form.Item>
 
-        <Form.Item label="Weight" required>
-          <Input.Group compact>
+        <Form.Item label="Weight" style={{ marginBottom: 16 }}>
+          <Row gutter={8}>
+            <Col span={12}>
             <Form.Item
+              label="lbs"
               name="weight_lbs"
               rules={[
                 { required: true, message: 'Weight in pounds is required' },
                 {
                   validator: (_, value) => {
-                    if (value == null) {
-                      return Promise.reject(new Error('Weight in pounds is required'));
+                    if (value == null || value === '') {
+                      return Promise.resolve(); // Let required rule handle this
                     }
                     const numValue = Number(value);
                     if (isNaN(numValue) || numValue < 0) {
@@ -199,27 +217,31 @@ const PackageModal: React.FC<PackageModalProps> = ({
                   }
                 }
               ]}
-              style={{ width: '50%', marginRight: '8px' }}
               hasFeedback
+              style={{ marginBottom: 0 }}
             >
               <InputNumber 
                 placeholder="Pounds" 
+                type="number"
                 min={0} 
+                style={{ width: '100%' }}
                 max={150}
                 step={0.1} 
-                style={{ width: '100%' }}
                 aria-label="Weight in pounds"
                 aria-required="true"
               />
             </Form.Item>
+            </Col>
+            <Col span={12}>
             <Form.Item
+              label="oz"
               name="weight_oz"
               rules={[
                 { required: true, message: 'Weight in ounces is required' },
                 {
                   validator: (_, value) => {
-                    if (value == null) {
-                      return Promise.reject(new Error('Weight in ounces is required'));
+                    if (value == null || value === '') {
+                      return Promise.resolve(); // Let required rule handle this
                     }
                     const numValue = Number(value);
                     if (isNaN(numValue) || numValue < 0) {
@@ -232,11 +254,12 @@ const PackageModal: React.FC<PackageModalProps> = ({
                   }
                 }
               ]}
-              style={{ width: '50%' }}
               hasFeedback
+              style={{ marginBottom: 0 }}
             >
               <InputNumber 
                 placeholder="Ounces" 
+                type="number"
                 min={0} 
                 max={15.99}
                 step={0.1} 
@@ -245,7 +268,8 @@ const PackageModal: React.FC<PackageModalProps> = ({
                 aria-required="true"
               />
             </Form.Item>
-          </Input.Group>
+            </Col>
+          </Row>
         </Form.Item>
 
         {/* Weight Calculation Breakdown */}
