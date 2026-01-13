@@ -5,7 +5,12 @@ from shipping_app.services.shipping_calculator import ShippingCalculator
 
 
 class SavedAddress(models.Model):
-    """Frequently used ship-from addresses"""
+    """Frequently used ship-from and ship-to addresses"""
+    ADDRESS_TYPE_CHOICES = [
+        ('from', 'Ship From'),
+        ('to', 'Ship To'),
+    ]
+    
     name = models.CharField(max_length=200)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
@@ -15,6 +20,7 @@ class SavedAddress(models.Model):
     state = models.CharField(max_length=2)
     zip_code = models.CharField(max_length=10)
     phone = models.CharField(max_length=20, blank=True)
+    address_type = models.CharField(max_length=10, choices=ADDRESS_TYPE_CHOICES, default='from')
     is_default = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

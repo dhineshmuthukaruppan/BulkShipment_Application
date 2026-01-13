@@ -314,7 +314,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             shipments = Shipment.objects.filter(id__in=shipment_ids)
             updated_count = 0
             
-            # Handle bulk address update
+            # Handle bulk address update (Ship From)
             if 'saved_address_id' in updates:
                 address = SavedAddress.objects.get(id=updates['saved_address_id'])
                 # Use individual save() to trigger status recalculation and persist to DB
@@ -340,6 +340,36 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 updated_count = shipments.count()
                 ShippingLogger().log_bulk_action(
                     'change_sender_address',
+                    updated_count,
+                    {'address_id': address.id, 'address_name': address.name}
+                )
+            
+            # Handle bulk address update (Ship To)
+            if 'saved_to_address_id' in updates:
+                address = SavedAddress.objects.get(id=updates['saved_to_address_id'])
+                # Use individual save() to trigger status recalculation and persist to DB
+                for shipment in shipments:
+                    shipment.to_first_name = address.first_name
+                    shipment.to_last_name = address.last_name
+                    shipment.to_address = address.address
+                    shipment.to_address2 = address.address2
+                    shipment.to_city = address.city
+                    shipment.to_state = address.state
+                    shipment.to_zip = address.zip_code
+                    # Mark address as reviewed
+                    validation_flags = list(shipment.validation_flags or [])
+                    if 'address_reviewed' not in validation_flags:
+                        validation_flags.append('address_reviewed')
+                    # Remove old flags
+                    flags_to_remove = ['missing_recipient_address']
+                    for flag in flags_to_remove:
+                        if flag in validation_flags:
+                            validation_flags.remove(flag)
+                    shipment.validation_flags = validation_flags
+                    shipment.save()  # Persists to database - status will be auto-calculated
+                updated_count = shipments.count()
+                ShippingLogger().log_bulk_action(
+                    'change_recipient_address',
                     updated_count,
                     {'address_id': address.id, 'address_name': address.name}
                 )
@@ -653,19 +683,33 @@ class SavedAddressViewSet(viewsets.ModelViewSet):
     queryset = SavedAddress.objects.all()
     serializer_class = SavedAddressSerializer
     
+    def get_queryset(self):
+        """Filter addresses by type if address_type query parameter is provided"""
+        queryset = SavedAddress.objects.all()
+        address_type = self.request.query_params.get('address_type', None)
+        if address_type in ['from', 'to']:
+            queryset = queryset.filter(address_type=address_type)
+        return queryset
+    
     def perform_create(self, serializer):
         """Override create to handle default address logic"""
         instance = serializer.save()
-        # If this is set as default, unset all others
+        # If this is set as default, unset all others of the same type
         if instance.is_default:
-            SavedAddress.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)
+            SavedAddress.objects.filter(
+                is_default=True,
+                address_type=instance.address_type
+            ).exclude(id=instance.id).update(is_default=False)
     
     def perform_update(self, serializer):
         """Override update to handle default address logic"""
         instance = serializer.save()
-        # If this is set as default, unset all others
+        # If this is set as default, unset all others of the same type
         if instance.is_default:
-            SavedAddress.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)
+            SavedAddress.objects.filter(
+                is_default=True,
+                address_type=instance.address_type
+            ).exclude(id=instance.id).update(is_default=False)
 
 
 class SavedPackageViewSet(viewsets.ModelViewSet):

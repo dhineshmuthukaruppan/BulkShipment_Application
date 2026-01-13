@@ -35,11 +35,16 @@ const PackageModal: React.FC<PackageModalProps> = ({
   }, [visible, initialValues, form]);
 
 
-  const handleSubmit = () => {
-    form.validateFields().then((values) => {
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
       onOk(values);
       form.resetFields();
-    });
+    } catch (errorInfo) {
+      // Validation failed - errors are shown automatically by Ant Design
+      // Don't close the modal if validation fails
+      console.error('Validation failed:', errorInfo);
+    }
   };
 
   return (
@@ -74,8 +79,21 @@ const PackageModal: React.FC<PackageModalProps> = ({
               name="length"
               rules={[
                 { required: true, message: 'Length is required' },
-                { type: 'number', min: 0.01, message: 'Length must be greater than 0' },
-                { type: 'number', max: 108, message: 'Length cannot exceed 108 inches' }
+                {
+                  validator: (_, value) => {
+                    if (value == null) {
+                      return Promise.reject(new Error('Length is required'));
+                    }
+                    const numValue = Number(value);
+                    if (isNaN(numValue) || numValue <= 0) {
+                      return Promise.reject(new Error('Length must be greater than 0'));
+                    }
+                    if (numValue > 108) {
+                      return Promise.reject(new Error('Length cannot exceed 108 inches'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
               ]}
               style={{ width: '33%', marginRight: '8px' }}
               hasFeedback
@@ -94,8 +112,21 @@ const PackageModal: React.FC<PackageModalProps> = ({
               name="width"
               rules={[
                 { required: true, message: 'Width is required' },
-                { type: 'number', min: 0.01, message: 'Width must be greater than 0' },
-                { type: 'number', max: 108, message: 'Width cannot exceed 108 inches' }
+                {
+                  validator: (_, value) => {
+                    if (value == null) {
+                      return Promise.reject(new Error('Width is required'));
+                    }
+                    const numValue = Number(value);
+                    if (isNaN(numValue) || numValue <= 0) {
+                      return Promise.reject(new Error('Width must be greater than 0'));
+                    }
+                    if (numValue > 108) {
+                      return Promise.reject(new Error('Width cannot exceed 108 inches'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
               ]}
               style={{ width: '33%', marginRight: '8px' }}
               hasFeedback
@@ -114,8 +145,21 @@ const PackageModal: React.FC<PackageModalProps> = ({
               name="height"
               rules={[
                 { required: true, message: 'Height is required' },
-                { type: 'number', min: 0.01, message: 'Height must be greater than 0' },
-                { type: 'number', max: 108, message: 'Height cannot exceed 108 inches' }
+                {
+                  validator: (_, value) => {
+                    if (value == null) {
+                      return Promise.reject(new Error('Height is required'));
+                    }
+                    const numValue = Number(value);
+                    if (isNaN(numValue) || numValue <= 0) {
+                      return Promise.reject(new Error('Height must be greater than 0'));
+                    }
+                    if (numValue > 108) {
+                      return Promise.reject(new Error('Height cannot exceed 108 inches'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
               ]}
               style={{ width: '33%' }}
               hasFeedback
@@ -139,8 +183,21 @@ const PackageModal: React.FC<PackageModalProps> = ({
               name="weight_lbs"
               rules={[
                 { required: true, message: 'Weight in pounds is required' },
-                { type: 'number', min: 0, message: 'Weight cannot be negative' },
-                { type: 'number', max: 150, message: 'Weight cannot exceed 150 lbs' }
+                {
+                  validator: (_, value) => {
+                    if (value == null) {
+                      return Promise.reject(new Error('Weight in pounds is required'));
+                    }
+                    const numValue = Number(value);
+                    if (isNaN(numValue) || numValue < 0) {
+                      return Promise.reject(new Error('Weight cannot be negative'));
+                    }
+                    if (numValue > 150) {
+                      return Promise.reject(new Error('Weight cannot exceed 150 lbs'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
               ]}
               style={{ width: '50%', marginRight: '8px' }}
               hasFeedback
@@ -159,8 +216,21 @@ const PackageModal: React.FC<PackageModalProps> = ({
               name="weight_oz"
               rules={[
                 { required: true, message: 'Weight in ounces is required' },
-                { type: 'number', min: 0, message: 'Ounces cannot be negative' },
-                { type: 'number', max: 15.99, message: 'Ounces cannot exceed 15.99' }
+                {
+                  validator: (_, value) => {
+                    if (value == null) {
+                      return Promise.reject(new Error('Weight in ounces is required'));
+                    }
+                    const numValue = Number(value);
+                    if (isNaN(numValue) || numValue < 0) {
+                      return Promise.reject(new Error('Ounces cannot be negative'));
+                    }
+                    if (numValue > 15.99) {
+                      return Promise.reject(new Error('Ounces cannot exceed 15.99'));
+                    }
+                    return Promise.resolve();
+                  }
+                }
               ]}
               style={{ width: '50%' }}
               hasFeedback
@@ -179,7 +249,7 @@ const PackageModal: React.FC<PackageModalProps> = ({
         </Form.Item>
 
         {/* Weight Calculation Breakdown */}
-        {(initialValues?.dimensional_weight || initialValues?.billable_weight) && (
+        {(initialValues?.dimensional_weight != null || initialValues?.billable_weight != null) && (
           <>
             <Divider style={{ margin: '16px 0' }} />
             <div style={{ 
@@ -199,23 +269,23 @@ const PackageModal: React.FC<PackageModalProps> = ({
                     {initialValues?.weight_oz || form.getFieldValue('weight_oz') || 0} oz
                   </Text>
                 </div>
-                {initialValues?.dimensional_weight && (
+                {initialValues?.dimensional_weight != null && (
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <Text>Dimensional Weight:</Text>
                     <Text>
-                      {initialValues.dimensional_weight.toFixed(2)} lbs
+                      {Number(initialValues.dimensional_weight).toFixed(2)} lbs
                       <Text type="secondary" style={{ fontSize: '11px', marginLeft: '4px' }}>
                         (Volume ÷ 166)
                       </Text>
                     </Text>
                   </div>
                 )}
-                {initialValues?.billable_weight && (
+                {initialValues?.billable_weight != null && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                     <Text strong>Billable Weight:</Text>
                     <Space>
                       <Text strong style={{ color: '#1890ff' }}>
-                        {initialValues.billable_weight.toFixed(2)} lbs
+                        {Number(initialValues.billable_weight).toFixed(2)} lbs
                       </Text>
                       {initialValues?.weight_type && (
                         <Tag color={initialValues.weight_type === 'dimensional' ? 'orange' : 'blue'}>

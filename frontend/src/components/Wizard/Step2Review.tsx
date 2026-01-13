@@ -57,10 +57,10 @@ const Step2Review: React.FC = () => {
   const [editingShipment, setEditingShipment] = useState<Shipment | null>(null);
   const [editModalType, setEditModalType] = useState<'from' | 'to' | 'package' | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [savedToAddresses, setSavedToAddresses] = useState<SavedAddress[]>([]);
   const [savedPackages, setSavedPackages] = useState<SavedPackage[]>([]);
-  const [bulkActionModal, setBulkActionModal] = useState<'address' | 'package' | null>(null);
+  const [bulkActionModal, setBulkActionModal] = useState<'address' | 'to_address' | 'package' | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [animatingShipments, setAnimatingShipments] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<{
@@ -78,11 +78,13 @@ const Step2Review: React.FC = () => {
 
   const loadSavedData = async () => {
     try {
-      const [addresses, packages] = await Promise.all([
-        savedAddressService.getAll(),
+      const [fromAddresses, toAddresses, packages] = await Promise.all([
+        savedAddressService.getAll('from'),
+        savedAddressService.getAll('to'),
         savedPackageService.getAll(),
       ]);
-      setSavedAddresses(addresses);
+      setSavedAddresses(fromAddresses);
+      setSavedToAddresses(toAddresses);
       setSavedPackages(packages);
     } catch (error) {
       console.error('Failed to load saved data:', error);
@@ -115,23 +117,41 @@ const Step2Review: React.FC = () => {
           }
         });
       } else if (editModalType === 'package') {
-        Object.assign(updateData, values);
+        // Ensure numeric values are properly formatted
+        updateData.length = values.length != null ? Number(values.length) : editingShipment.length;
+        updateData.width = values.width != null ? Number(values.width) : editingShipment.width;
+        updateData.height = values.height != null ? Number(values.height) : editingShipment.height;
+        updateData.weight_lbs = values.weight_lbs != null ? Number(values.weight_lbs) : editingShipment.weight_lbs;
+        updateData.weight_oz = values.weight_oz != null ? Number(values.weight_oz) : editingShipment.weight_oz;
+        if (values.item_sku !== undefined) {
+          updateData.item_sku = values.item_sku;
+        }
       }
 
       await shipmentService.updateShipment(editingShipment.id, updateData);
       
       // Recalculate shipping if package changed
       if (editModalType === 'package') {
-        const updated = await shipmentService.getShipment(editingShipment.id);
-        await shipmentService.calculateShipping(updated.id, updated.shipping_service);
-        const refreshed = await shipmentService.getShipment(updated.id);
-        dispatch(updateShipment(refreshed));
-        
-        // Check status change
-        if (oldStatus !== 'ready' && refreshed.status === 'ready') {
-          message.success('✓ Marked ready');
-        } else {
-          message.success('Shipment updated successfully');
+        try {
+          const updated = await shipmentService.getShipment(editingShipment.id);
+          if (updated.shipping_service) {
+            await shipmentService.calculateShipping(updated.id, updated.shipping_service, updated.shipping_provider);
+          }
+          const refreshed = await shipmentService.getShipment(updated.id);
+          dispatch(updateShipment(refreshed));
+          
+          // Check status change
+          if (oldStatus !== 'ready' && refreshed.status === 'ready') {
+            message.success('✓ Marked ready');
+          } else {
+            message.success('Shipment updated successfully');
+          }
+        } catch (calcError: any) {
+          // If calculation fails, still update the shipment but log the error
+          console.error('Error calculating shipping:', calcError);
+          const refreshed = await shipmentService.getShipment(editingShipment.id);
+          dispatch(updateShipment(refreshed));
+          message.success('Shipment updated successfully (shipping cost calculation skipped)');
         }
       } else {
         // Always refresh to get the latest status after update
@@ -148,8 +168,13 @@ const Step2Review: React.FC = () => {
 
       setEditModalType(null);
       setEditingShipment(null);
-    } catch (error) {
-      message.error('Failed to update shipment');
+    } catch (error: any) {
+      console.error('Error updating shipment:', error);
+      const errorMessage = error?.response?.data?.error || 
+                         error?.response?.data?.message || 
+                         error?.message || 
+                         'Failed to update shipment';
+      message.error(errorMessage);
     }
   };
 
@@ -180,14 +205,18 @@ const Step2Review: React.FC = () => {
     }
   };
 
-  const handleBulkAddressChange = async (addressId: number) => {
+  const handleBulkAddressChange = async (addressId: number, addressType: 'from' | 'to' = 'from') => {
     try {
       // Track old statuses before update
       const oldStatuses = shipments
         .filter(s => selectedShipments.includes(s.id))
         .map(s => ({ id: s.id, status: s.status }));
       
-      await shipmentService.bulkUpdate(selectedShipments, { saved_address_id: addressId });
+      const updateData = addressType === 'from' 
+        ? { saved_address_id: addressId }
+        : { saved_to_address_id: addressId };
+      
+      await shipmentService.bulkUpdate(selectedShipments, updateData);
       
       // Fetch only the updated shipments instead of all shipments
       const updatedShipments = await Promise.all(
@@ -683,29 +712,7 @@ const Step2Review: React.FC = () => {
       showSorterTooltip: false,
       render: (_, record) => (
         <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '12px' }}>
-          <div>{formatPackageDetails(record)}</div>
-          {record.billable_weight != null && (
-            <div style={{ marginTop: '4px', fontSize: '11px', color: theme === 'dark' ? '#8c8c8c' : '#595959' }}>
-              {record.dimensional_weight != null && (
-                <div>
-                  Dim: {Number(record.dimensional_weight).toFixed(2)} lbs | 
-                  Billable: {Number(record.billable_weight).toFixed(2)} lbs
-                  {record.weight_type && (
-                    <Tag color={record.weight_type === 'dimensional' ? 'orange' : 'blue'} style={{ marginLeft: '4px', fontSize: '11px' }}>
-                      {record.weight_type}
-                    </Tag>
-                  )}
-                </div>
-              )}
-              {record.shipping_zone && (
-                <div style={{ marginTop: '2px' }}>
-                  <Tag color={record.zone_type === 'intrastate' ? 'blue' : 'orange'} style={{ fontSize: '11px' }}>
-                    Zone {record.shipping_zone} ({record.zone_type || 'intrastate'})
-                  </Tag>
-                </div>
-              )}
-            </div>
-          )}
+          {formatPackageDetails(record)}
         </div>
       ),
     },
@@ -914,7 +921,7 @@ const Step2Review: React.FC = () => {
     getCheckboxProps: (record: Shipment) => ({
       name: `shipment-${record.id}`,
     }),
-    preserveSelectedRowKeys: true, // Preserve selection across pagination
+    preserveSelectedRowKeys: true
   };
 
   const hasSelected = selectedShipments.length > 0;
@@ -1040,29 +1047,10 @@ const Step2Review: React.FC = () => {
             }}>
               Validation Issues:
             </span>
-            {validationCounts.autoFilledOrderNumber > 0 && (
-              <Button
-                size="small"
-                type={filters.validationIssue === 'order_number_auto_generated' ? 'primary' : 'default'}
-                onClick={() => {
-                  if (filters.validationIssue === 'order_number_auto_generated') {
-                    setFilters({ ...filters, validationIssue: undefined });
-                  } else {
-                    setFilters({ ...filters, validationIssue: 'order_number_auto_generated' });
-                  }
-                }}
-                style={{
-                  borderColor: filters.validationIssue === 'order_number_auto_generated' ? undefined : '#1890ff',
-                  color: filters.validationIssue === 'order_number_auto_generated' ? undefined : '#1890ff',
-                }}
-              >
-                Auto-Filled Order ID ({validationCounts.autoFilledOrderNumber})
-              </Button>
-            )}
             {validationCounts.missingOrderNumber > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_order_number' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_order_number' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_order_number') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1077,7 +1065,7 @@ const Step2Review: React.FC = () => {
             {validationCounts.missingAddressFrom > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_sender_address' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_sender_address' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_sender_address') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1092,7 +1080,7 @@ const Step2Review: React.FC = () => {
             {validationCounts.missingAddressTo > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_recipient_address' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_recipient_address' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_recipient_address') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1107,7 +1095,7 @@ const Step2Review: React.FC = () => {
             {validationCounts.missingPackageDetails > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_package_details' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_package_details' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_package_details') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1122,7 +1110,7 @@ const Step2Review: React.FC = () => {
             {validationCounts.missingPincode > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_pincode' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_pincode' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_pincode') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1137,7 +1125,7 @@ const Step2Review: React.FC = () => {
             {validationCounts.missingWeight > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_weight' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_weight' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_weight') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1152,7 +1140,7 @@ const Step2Review: React.FC = () => {
             {validationCounts.missingDimensions > 0 && (
               <Button
                 size="small"
-                type={filters.validationIssue === 'missing_dimensions' ? 'primary' : 'default'}
+                className={`validation-issue-btn ${filters.validationIssue === 'missing_dimensions' ? 'validation-issue-btn-active' : ''}`}
                 onClick={() => {
                   if (filters.validationIssue === 'missing_dimensions') {
                     setFilters({ ...filters, validationIssue: undefined });
@@ -1189,22 +1177,30 @@ const Step2Review: React.FC = () => {
                 </span>
                 <Button 
                   size="small"
-                  type="primary"
                   icon={<CheckOutlined />}
                   onClick={handleApproveAll}
-                  className={`approve-all-button ${animatingShipments.size > 0 ? 'approve-all-button-animating' : ''}`}
+                  className={`bulk-action-btn approve-all-btn ${animatingShipments.size > 0 ? 'approve-all-button-animating' : ''}`}
                 >
                   Approve All
                 </Button>
-                <Button 
+                <Button
                   size="small"
                   onClick={() => setBulkActionModal('address')}
+                  className="bulk-action-btn"
                 >
                   Change Ship From Address
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => setBulkActionModal('to_address')}
+                  className="bulk-action-btn"
+                >
+                  Change Ship To Address
                 </Button>
                 <Button 
                   size="small"
                   onClick={() => setBulkActionModal('package')}
+                  className="bulk-action-btn"
                 >
                   Change Package Details
                 </Button>
@@ -1214,7 +1210,7 @@ const Step2Review: React.FC = () => {
                   okText="Yes"
                   cancelText="No"
                 >
-                  <Button size="small" danger>
+                  <Button size="small" className="bulk-action-btn delete-btn">
                     Delete Selected
                   </Button>
                 </Popconfirm>
@@ -1228,22 +1224,7 @@ const Step2Review: React.FC = () => {
             dataSource={filteredShipments}
             rowKey="id"
             rowSelection={rowSelection}
-            pagination={{
-              current: pagination.current,
-              pageSize: pagination.pageSize,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} shipments`,
-              pageSizeOptions: ['10', '20', '50', '100'],
-              position: ['bottomRight'],
-              onChange: (page, pageSize) => {
-                setPagination({ current: page, pageSize: pageSize || 10 });
-              },
-              onShowSizeChange: (current, size) => {
-                setPagination({ current: 1, pageSize: size }); // Reset to page 1 when page size changes
-              },
-              responsive: true,
-            }}
+            pagination={false}
             scroll={{ 
               x: 1200,
               y: 'calc(100vh - 400px)' // Enable vertical scrolling with dynamic height
@@ -1346,11 +1327,64 @@ const Step2Review: React.FC = () => {
             return optionText.includes(searchText);
           }}
           onChange={(value) => {
-            handleBulkAddressChange(value);
+            handleBulkAddressChange(value, 'from');
             setBulkActionModal(null);
           }}
         >
           {savedAddresses.map(addr => {
+            const fullAddress = [
+              addr.name,
+              addr.address,
+              addr.address2,
+              `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
+            ].filter(Boolean).join(', ');
+            return (
+              <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
+                {fullAddress}
+              </Select.Option>
+            );
+          })}
+        </Select>
+      </Modal>
+
+      <Modal
+        title="Change Ship To Address for Selected"
+        open={bulkActionModal === 'to_address'}
+        onCancel={() => setBulkActionModal(null)}
+        onOk={() => setBulkActionModal(null)}
+        centered
+        mask={true}
+        maskClosable={false}
+        okText="Close"
+        cancelText="Cancel"
+        width={700}
+        footer={[
+          <Button key="cancel" onClick={() => setBulkActionModal(null)}>
+            Cancel
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setBulkActionModal(null)}>
+            Close
+          </Button>,
+        ]}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <p>Select a saved address to apply to all selected shipments:</p>
+        </div>
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Search or select saved address"
+          showSearch
+          filterOption={(input, option) => {
+            const searchText = input.toLowerCase();
+            const optionText = String(option?.label || option?.children || '').toLowerCase();
+            return optionText.includes(searchText);
+          }}
+          onChange={(value) => {
+            handleBulkAddressChange(value, 'to');
+            setBulkActionModal(null);
+          }}
+        >
+          {savedToAddresses.map(addr => {
             const fullAddress = [
               addr.name,
               addr.address,
@@ -1914,38 +1948,141 @@ const Step2Review: React.FC = () => {
           color: #52c41a !important;
         }
         
-        /* Approve All button styling */
-        .approve-all-button {
-          background-color: #52c41a !important;
+        /* Professional bulk action buttons - Ant Design default style */
+        .bulk-action-btn {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          border-radius: 6px !important;
+          font-weight: 400 !important;
+          box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02) !important;
+        }
+        
+        .bulk-action-btn:hover {
+          transform: translateY(-1px) !important;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12) !important;
+          border-color: #40a9ff !important;
+          color: #40a9ff !important;
+        }
+        
+        .bulk-action-btn:active {
+          transform: translateY(0) !important;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08) !important;
+        }
+        
+        .bulk-action-btn:focus {
+          border-color: #40a9ff !important;
+          color: #40a9ff !important;
+          box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+        }
+        
+        /* Approve All button - green accent */
+        .approve-all-btn {
           border-color: #52c41a !important;
-          color: #fff !important;
+          color: #52c41a !important;
         }
         
-        .approve-all-button:hover,
-        .approve-all-button:focus {
-          background-color: #73d13d !important;
+        .approve-all-btn:hover {
           border-color: #73d13d !important;
-          color: #fff !important;
+          color: #73d13d !important;
+          background-color: rgba(82, 196, 26, 0.06) !important;
         }
         
-        .approve-all-button:active {
-          background-color: #389e0d !important;
+        .approve-all-btn:focus {
+          border-color: #52c41a !important;
+          color: #52c41a !important;
+          box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.2) !important;
+        }
+        
+        .approve-all-btn:active {
           border-color: #389e0d !important;
-          color: #fff !important;
+          color: #389e0d !important;
+          background-color: rgba(82, 196, 26, 0.1) !important;
         }
         
-        .approve-all-button .anticon {
-          color: #fff !important;
+        .approve-all-btn .anticon {
+          color: #52c41a !important;
+          transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
         
-        .approve-all-button:hover .anticon,
-        .approve-all-button:focus .anticon {
-          color: #fff !important;
+        .approve-all-btn:hover .anticon {
+          color: #73d13d !important;
+        }
+        
+        /* Delete button - red accent */
+        .delete-btn {
+          border-color: #ff4d4f !important;
+          color: #ff4d4f !important;
+        }
+        
+        .delete-btn:hover {
+          border-color: #ff7875 !important;
+          color: #ff7875 !important;
+          background-color: rgba(255, 77, 79, 0.06) !important;
+        }
+        
+        .delete-btn:focus {
+          border-color: #ff4d4f !important;
+          color: #ff4d4f !important;
+          box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2) !important;
+        }
+        
+        .delete-btn:active {
+          border-color: #cf1322 !important;
+          color: #cf1322 !important;
+          background-color: rgba(255, 77, 79, 0.1) !important;
         }
         
         /* Approve All button animation */
         .approve-all-button-animating {
           animation: approvePulse 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        
+        /* Validation issue buttons - warning color for missing items */
+        .validation-issue-btn {
+          border-color: #faad14 !important;
+          color: #faad14 !important;
+          background-color: transparent !important;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        
+        .validation-issue-btn:hover {
+          border-color: #ffc53d !important;
+          color: #ffc53d !important;
+          background-color: rgba(250, 173, 20, 0.08) !important;
+          transform: translateY(-1px) !important;
+          box-shadow: 0 2px 4px rgba(250, 173, 20, 0.2) !important;
+        }
+        
+        .validation-issue-btn:active {
+          border-color: #d48806 !important;
+          color: #d48806 !important;
+          background-color: rgba(250, 173, 20, 0.12) !important;
+          transform: translateY(0) !important;
+        }
+        
+        .validation-issue-btn:focus {
+          border-color: #faad14 !important;
+          color: #faad14 !important;
+          box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.2) !important;
+        }
+        
+        /* Active state for validation issue buttons */
+        .validation-issue-btn-active {
+          background-color: #faad14 !important;
+          border-color: #faad14 !important;
+          color: #fff !important;
+        }
+        
+        .validation-issue-btn-active:hover {
+          background-color: #ffc53d !important;
+          border-color: #ffc53d !important;
+          color: #fff !important;
+        }
+        
+        .validation-issue-btn-active:focus {
+          background-color: #faad14 !important;
+          border-color: #faad14 !important;
+          color: #fff !important;
+          box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.3) !important;
         }
       `}</style>
     </div>
@@ -1953,21 +2090,3 @@ const Step2Review: React.FC = () => {
 };
 
 export default Step2Review;
-
-// Add global styles for pagination dropdown to ensure it's visible
-const style = document.createElement('style');
-style.textContent = `
-  .ant-pagination-options {
-    z-index: 1050 !important;
-  }
-  .ant-pagination-options-size-changer.ant-select {
-    z-index: 1051 !important;
-  }
-  .ant-select-dropdown {
-    z-index: 1052 !important;
-  }
-`;
-if (!document.head.querySelector('style[data-pagination-fix]')) {
-  style.setAttribute('data-pagination-fix', 'true');
-  document.head.appendChild(style);
-}

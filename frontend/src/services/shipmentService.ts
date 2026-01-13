@@ -120,8 +120,9 @@ export const shipmentService = {
 };
 
 export const savedAddressService = {
-  getAll: async (): Promise<SavedAddress[]> => {
-    const response = await api.get('/saved-addresses/');
+  getAll: async (addressType?: 'from' | 'to'): Promise<SavedAddress[]> => {
+    const params = addressType ? { address_type: addressType } : {};
+    const response = await api.get('/saved-addresses/', { params });
     return response.data;
   },
   getById: async (id: number): Promise<SavedAddress> => {

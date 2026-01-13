@@ -92,10 +92,11 @@ const Master: React.FC<MasterProps> = () => {
     setLoading(true);
     try {
       if (activeTab === 'ship-from' || activeTab === 'ship-to') {
-        const addresses = await savedAddressService.getAll();
-        // For now, we'll use the same addresses for both. Later we can add a type field
-        setShipFromAddresses(addresses);
-        setShipToAddresses(addresses);
+        // Load addresses separately by type
+        const fromAddresses = await savedAddressService.getAll('from');
+        const toAddresses = await savedAddressService.getAll('to');
+        setShipFromAddresses(fromAddresses);
+        setShipToAddresses(toAddresses);
       } else if (activeTab === 'packages') {
         const packagesData = await savedPackageService.getAll();
         setPackages(packagesData);
@@ -182,11 +183,15 @@ const Master: React.FC<MasterProps> = () => {
 
   const handleAddressSubmit = async (values: any) => {
     try {
+      // Determine address type based on active tab
+      const addressType = activeTab === 'ship-to' ? 'to' : 'from';
+      const addressData = { ...values, address_type: addressType };
+      
       if (editingAddress) {
-        await savedAddressService.update(editingAddress.id, values);
+        await savedAddressService.update(editingAddress.id, addressData);
         message.success('Address updated successfully');
       } else {
-        await savedAddressService.create(values);
+        await savedAddressService.create(addressData);
         message.success('Address created successfully');
       }
       setAddressModalVisible(false);

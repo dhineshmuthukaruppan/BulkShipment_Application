@@ -65,6 +65,7 @@ export interface SavedAddress {
   state: string;
   zip_code: string;
   phone: string;
+  address_type: 'from' | 'to';
   is_default: boolean;
 }
 

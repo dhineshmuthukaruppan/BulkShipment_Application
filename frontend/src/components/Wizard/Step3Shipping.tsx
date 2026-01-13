@@ -68,12 +68,15 @@ const Step3Shipping: React.FC = () => {
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { shipments, selectedShipments, totalCost } = useAppSelector((state) => state.wizard);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [tariffModalVisible, setTariffModalVisible] = useState(false);
   const [breakdownModalVisible, setBreakdownModalVisible] = useState(false);
   const [selectedShipmentForBreakdown, setSelectedShipmentForBreakdown] = useState<Shipment | null>(null);
   const [breakdownData, setBreakdownData] = useState<CostBreakdown | null>(null);
   const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+  const [bulkProviderModalVisible, setBulkProviderModalVisible] = useState(false);
+  const [bulkServiceModalVisible, setBulkServiceModalVisible] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>('');
 
   useEffect(() => {
     dispatch(calculateTotalCost());
@@ -145,13 +148,25 @@ const Step3Shipping: React.FC = () => {
     }
   };
 
-  const handleBulkProviderChange = async (provider: string) => {
+  const handleBulkProviderChange = async () => {
+    if (!selectedProvider) {
+      message.warning('Please select a shipping provider');
+      return;
+    }
+    
     try {
-      const firstService = SHIPPING_SERVICES[provider]?.[0]?.value || 'Ground Shipping';
+      const firstService = SHIPPING_SERVICES[selectedProvider]?.[0]?.value || 'Ground Shipping';
       await shipmentService.bulkUpdate(selectedShipments, { 
-        shipping_provider: provider,
+        shipping_provider: selectedProvider,
         shipping_service: firstService 
       });
+      
+      // Recalculate shipping for all selected shipments
+      await Promise.all(
+        selectedShipments.map(id => 
+          shipmentService.calculateShipping(id, firstService, selectedProvider)
+        )
+      );
       
       // Fetch only the updated shipments instead of all shipments
       const updatedShipments = await Promise.all(
@@ -167,14 +182,32 @@ const Step3Shipping: React.FC = () => {
       dispatch(clearSelectedShipments());
       dispatch(calculateTotalCost());
       message.success(`Updated ${selectedShipments.length} shipments`);
+      setBulkProviderModalVisible(false);
+      setSelectedProvider('');
     } catch (error) {
       message.error('Failed to update shipping providers');
     }
   };
 
-  const handleBulkServiceChange = async (service: string) => {
+  const handleBulkServiceChange = async () => {
+    if (!selectedService) {
+      message.warning('Please select a shipping service');
+      return;
+    }
+    
     try {
-      await shipmentService.bulkUpdate(selectedShipments, { shipping_service: service });
+      // Get the most common provider from selected shipments
+      const selectedShipmentData = shipments.filter(s => selectedShipments.includes(s.id));
+      const mostCommonProvider = selectedShipmentData[0]?.shipping_provider || 'USPS';
+      
+      await shipmentService.bulkUpdate(selectedShipments, { shipping_service: selectedService });
+      
+      // Recalculate shipping for all selected shipments
+      await Promise.all(
+        selectedShipments.map(id => 
+          shipmentService.calculateShipping(id, selectedService, mostCommonProvider)
+        )
+      );
       
       // Fetch only the updated shipments instead of all shipments
       const updatedShipments = await Promise.all(
@@ -190,6 +223,8 @@ const Step3Shipping: React.FC = () => {
       dispatch(clearSelectedShipments());
       dispatch(calculateTotalCost());
       message.success(`Updated ${selectedShipments.length} shipments`);
+      setBulkServiceModalVisible(false);
+      setSelectedService('');
     } catch (error) {
       message.error('Failed to update shipping services');
     }
@@ -314,104 +349,59 @@ const Step3Shipping: React.FC = () => {
 
   return (
     <div>
-      <Title level={2}>Select Shipping Provider (Step 3 of 3)</Title>
-
-      {/* Total Price Display in Header Area */}
-      <div style={{ 
-        marginBottom: '24px', 
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '12px 16px',
-        background: theme === 'dark' ? '#1f1f1f' : '#f5f5f5',
-        borderRadius: '4px',
-        transition: 'background-color 0.3s ease',
-      }}>
-        <Button
-          icon={<TableOutlined />}
-          onClick={() => setTariffModalVisible(true)}
-          type="default"
-        >
-          View Tariff Chart
-        </Button>
-        <Text strong style={{ fontSize: '18px', color: theme === 'dark' ? '#fff' : '#262626' }}>
-          Total: ${(Number(totalCost) || 0).toFixed(2)}
-        </Text>
-      </div>
+      <Title level={2} style={{ background: 'transparent', margin: '0 0 24px 0' }}>Select Shipping Provider (Step 3 of 3)</Title>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Card>
+        <Card style={{ overflow: 'visible' }}>
+          {/* Header with buttons at top */}
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <Button
+                icon={<TableOutlined />}
+                onClick={() => setTariffModalVisible(true)}
+                type="default"
+              >
+                View Tariff Chart
+              </Button>
+            </div>
+            <Space>
+              <Text strong style={{ fontSize: '18px', color: theme === 'dark' ? '#fff' : '#262626', marginRight: 16 }}>
+                Total: ${(Number(totalCost) || 0).toFixed(2)}
+              </Text>
+              <Button
+                icon={<SaveOutlined />}
+                onClick={() => {
+                  dispatch(calculateTotalCost());
+                  dispatch(saveDraft({ step: 3 }));
+                  message.success('Draft saved successfully!');
+                  dispatch(setCurrentStep(1));
+                }}
+                disabled={shipments.length === 0}
+              >
+                Save as Draft
+              </Button>
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={() => dispatch(setCurrentStep(2))}
+              >
+                Step 2
+              </Button>
+              <Button
+                type="primary"
+                onClick={() => dispatch(setCurrentStep(4))}
+                disabled={shipments.length === 0}
+              >
+                Step 4 <ArrowRightOutlined />
+              </Button>
+            </Space>
+          </div>
+
           {selectedShipments.length > 0 && (
             <Space style={{ marginBottom: 16 }} wrap>
-              <Button onClick={() => {
-                Modal.confirm({
-                  title: 'Change Shipping Provider',
-                  content: (
-                    <div>
-                      <p style={{ marginBottom: 16 }}>Select a shipping provider to apply to all selected shipments:</p>
-                      <Select
-                        style={{ width: '100%' }}
-                        placeholder="Select provider"
-                        onChange={(value) => {
-                          handleBulkProviderChange(value);
-                          Modal.destroyAll();
-                        }}
-                        options={SHIPPING_PROVIDERS}
-                      />
-                    </div>
-                  ),
-                  onOk: () => {},
-                  okText: 'Close',
-                  cancelText: 'Cancel',
-                  centered: true,
-                  mask: true,
-                  maskClosable: false,
-                });
-              }}>
+              <Button onClick={() => setBulkProviderModalVisible(true)}>
                 Change Provider for Selected
               </Button>
-              <Button onClick={() => {
-                // Get the most common provider from selected shipments
-                const selectedShipmentData = shipments.filter(s => selectedShipments.includes(s.id));
-                const mostCommonProvider = selectedShipmentData[0]?.shipping_provider || 'USPS';
-                
-                Modal.confirm({
-                  title: 'Change Shipping Service',
-                  content: (
-                    <div>
-                      <p style={{ marginBottom: 16 }}>Select a shipping service to apply to all selected shipments:</p>
-                      <Select
-                        style={{ width: '100%' }}
-                        placeholder="Select service"
-                        onChange={(value) => {
-                          handleBulkServiceChange(value);
-                          Modal.destroyAll();
-                        }}
-                        options={[
-                          { 
-                            label: 'Switch to the most affordable rate available', 
-                            value: getMostAffordableService(mostCommonProvider) 
-                          },
-                          { 
-                            label: 'Change to Priority Mail', 
-                            value: 'Priority Mail' 
-                          },
-                          { 
-                            label: 'Change to Ground Shipping', 
-                            value: 'Ground Shipping' 
-                          },
-                        ]}
-                      />
-                    </div>
-                  ),
-                  onOk: () => {},
-                  okText: 'Close',
-                  cancelText: 'Cancel',
-                  centered: true,
-                  mask: true,
-                  maskClosable: false,
-                });
-              }}>
+              <Button onClick={() => setBulkServiceModalVisible(true)}>
                 Change Service for Selected
               </Button>
             </Space>
@@ -422,36 +412,12 @@ const Step3Shipping: React.FC = () => {
             dataSource={shipments}
             rowKey="id"
             rowSelection={rowSelection}
-            pagination={{ pageSize: 10 }}
+            pagination={false}
           />
         </Card>
         
         {/* Dark mode table styling */}
         <style key={theme}>{`
-          /* Checkbox styling for dark mode */
-          .ant-checkbox-inner {
-            border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
-            background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
-          }
-          
-          .ant-checkbox:hover .ant-checkbox-inner {
-            border-color: #1890ff !important;
-          }
-          
-          .ant-checkbox-checked .ant-checkbox-inner {
-            border-color: #1890ff !important;
-            background-color: #1890ff !important;
-          }
-          
-          .ant-checkbox-checked .ant-checkbox-inner::after {
-            border-color: #fff !important;
-          }
-          
-          .ant-table-selection-column .ant-checkbox-inner {
-            border-color: ${theme === 'dark' ? '#434343' : '#d9d9d9'} !important;
-            background-color: ${theme === 'dark' ? '#1f1f1f' : '#fff'} !important;
-          }
-          
           /* Dropdown arrow visibility */
           .ant-select-arrow {
             color: ${theme === 'dark' ? '#fff' : '#00000073'} !important;
@@ -498,36 +464,6 @@ const Step3Shipping: React.FC = () => {
             border-color: ${theme === 'dark' ? '#ff7875' : '#ff7875'} !important;
           }
         `}</style>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <Space>
-            <Button
-              icon={<SaveOutlined />}
-              onClick={() => {
-                dispatch(calculateTotalCost());
-                dispatch(saveDraft({ step: 3 }));
-                message.success('Draft saved successfully!');
-                dispatch(setCurrentStep(1));
-              }}
-              disabled={shipments.length === 0}
-            >
-              Save as Draft
-            </Button>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => dispatch(setCurrentStep(2))}
-            >
-              Step 2
-            </Button>
-            <Button
-              type="primary"
-              onClick={() => dispatch(setCurrentStep(4))}
-              disabled={shipments.length === 0}
-            >
-              Step 4 <ArrowRightOutlined />
-            </Button>
-          </Space>
-        </div>
       </Space>
 
       <TariffChartModal
@@ -545,6 +481,82 @@ const Step3Shipping: React.FC = () => {
         breakdown={breakdownData}
         shipmentId={selectedShipmentForBreakdown?.id}
       />
+
+      {/* Bulk Change Provider Modal */}
+      <Modal
+        title="Change Shipping Provider"
+        open={bulkProviderModalVisible}
+        onOk={handleBulkProviderChange}
+        onCancel={() => {
+          setBulkProviderModalVisible(false);
+          setSelectedProvider('');
+        }}
+        okText="Apply"
+        cancelText="Cancel"
+        centered
+        mask={true}
+        maskClosable={false}
+        width={500}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <p>Select a shipping provider to apply to all selected shipments:</p>
+        </div>
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Select provider"
+          value={selectedProvider || undefined}
+          onChange={(value) => setSelectedProvider(value)}
+          options={SHIPPING_PROVIDERS}
+          size="large"
+        />
+      </Modal>
+
+      {/* Bulk Change Service Modal */}
+      <Modal
+        title="Change Shipping Service"
+        open={bulkServiceModalVisible}
+        onOk={handleBulkServiceChange}
+        onCancel={() => {
+          setBulkServiceModalVisible(false);
+          setSelectedService('');
+        }}
+        okText="Apply"
+        cancelText="Cancel"
+        centered
+        mask={true}
+        maskClosable={false}
+        width={500}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <p>Select a shipping service to apply to all selected shipments:</p>
+        </div>
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Select service"
+          value={selectedService || undefined}
+          onChange={(value) => setSelectedService(value)}
+          size="large"
+          showSearch
+          filterOption={(input, option) =>
+            (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+          }
+          options={(() => {
+            const selectedShipmentData = shipments.filter(s => selectedShipments.includes(s.id));
+            const mostCommonProvider = selectedShipmentData[0]?.shipping_provider || 'USPS';
+            const services = getServicesForProvider(mostCommonProvider);
+            return [
+              { 
+                label: 'Switch to the most affordable rate available', 
+                value: getMostAffordableService(mostCommonProvider) 
+              },
+              ...services.map(s => ({
+                label: `${s.label} (${s.priceRange})`,
+                value: s.value,
+              }))
+            ];
+          })()}
+        />
+      </Modal>
     </div>
   );
 };
