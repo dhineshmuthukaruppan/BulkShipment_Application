@@ -684,12 +684,12 @@ const Step2Review: React.FC = () => {
       render: (_, record) => (
         <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '12px' }}>
           <div>{formatPackageDetails(record)}</div>
-          {record.billable_weight && (
+          {record.billable_weight != null && (
             <div style={{ marginTop: '4px', fontSize: '11px', color: theme === 'dark' ? '#8c8c8c' : '#595959' }}>
-              {record.dimensional_weight && (
+              {record.dimensional_weight != null && (
                 <div>
-                  Dim: {record.dimensional_weight.toFixed(2)} lbs | 
-                  Billable: {record.billable_weight.toFixed(2)} lbs
+                  Dim: {Number(record.dimensional_weight).toFixed(2)} lbs | 
+                  Billable: {Number(record.billable_weight).toFixed(2)} lbs
                   {record.weight_type && (
                     <Tag color={record.weight_type === 'dimensional' ? 'orange' : 'blue'} style={{ marginLeft: '4px', fontSize: '11px' }}>
                       {record.weight_type}

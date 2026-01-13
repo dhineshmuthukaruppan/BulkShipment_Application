@@ -135,11 +135,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     )
             
             parser = CSVParser()
-            result = parser.parse_file(file.read())
+            parse_result = parser.parse_file(file.read())
             
-            if result['errors']:
+            if parse_result.get('errors'):
                 return Response(
-                    {'errors': result['errors'], 'warnings': result['warnings']},
+                    {'errors': parse_result.get('errors', []), 'warnings': parse_result.get('warnings', [])},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -161,7 +161,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             calculator = ShippingCalculator()
             
             with transaction.atomic():
-                for row_data in result['rows']:
+                for row_data in parse_result.get('rows', []):
                     # Apply default sender address if missing
                     if 'missing_sender_address' in row_data.get('validation_flags', []):
                         if default_address:
@@ -270,12 +270,12 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             return Response({
                 'shipments': serializer.data,
                 'count': len(created_shipments),
-                'warnings': result['warnings']
+                'warnings': parse_result.get('warnings', [])
             }, status=status.HTTP_201_CREATED)
         except Exception as e:
             error_trace = traceback.format_exc()
             logger = ShippingLogger()
-            logger.logger.error('csv_upload_error', exc_info=True, extra={'error': str(e)})
+            logger.log_error('csv_upload_error', str(e))
             return Response(
                 {'error': f'Internal server error: {str(e)}', 'traceback': error_trace if settings.DEBUG else None},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
