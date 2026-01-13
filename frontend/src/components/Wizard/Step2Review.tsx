@@ -946,7 +946,7 @@ const Step2Review: React.FC = () => {
                 color: isApproved ? '#fff' : (isInvalid ? '#ff4d4f' : (theme === 'dark' ? '#fff' : '#262626')),
                 fontWeight: 500,
                 minWidth: isApproved ? '95px' : '85px',
-                height: '32px'
+                height: '32px',
                 opacity: isInvalid ? 0.6 : 1,
                 cursor: isInvalid ? 'not-allowed' : 'pointer',
               }}
