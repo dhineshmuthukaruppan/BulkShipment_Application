@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Steps, Card, Button, Space, Typography, message } from 'antd';
 import { DownloadOutlined, PrinterOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { resetWizard } from '../../store/slices/wizardSlice';
+import { resetWizard, clearSelectedShipments } from '../../store/slices/wizardSlice';
 import Step1Upload from './Step1Upload';
 import Step2Review from './Step2Review';
 import Step3Shipping from './Step3Shipping';
@@ -16,6 +16,11 @@ const WizardSteps: React.FC = () => {
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { currentStep, shipments, labelSize } = useAppSelector((state) => state.wizard);
+
+  // Clear selected shipments when step changes
+  useEffect(() => {
+    dispatch(clearSelectedShipments());
+  }, [currentStep, dispatch]);
 
   const steps = [
     {

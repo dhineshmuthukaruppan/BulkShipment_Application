@@ -30,20 +30,39 @@ const AddressModal: React.FC<AddressModalProps> = ({
 }) => {
   const [form] = Form.useForm();
 
+  // Get form values from initialValues
+  const getFormValues = () => {
+    if (!initialValues) return {};
+    
+    const prefix = addressType === 'from' ? 'from_' : 'to_';
+    
+    // Extract values from the shipment record
+    const formValues: any = {
+      first_name: initialValues[`${prefix}first_name` as keyof Shipment] || '',
+      last_name: initialValues[`${prefix}last_name` as keyof Shipment] || '',
+      address: initialValues[`${prefix}address` as keyof Shipment] || '',
+      address2: initialValues[`${prefix}address2` as keyof Shipment] || '',
+      city: initialValues[`${prefix}city` as keyof Shipment] || '',
+      state: initialValues[`${prefix}state` as keyof Shipment] || '',
+      zip: initialValues[`${prefix}zip` as keyof Shipment] || '',
+    };
+    
+    // Handle phone number - check multiple possible fields
+    const fromPhone = initialValues[`${prefix}phone` as keyof Shipment];
+    const phoneNum1 = initialValues.phone_num1;
+    formValues.phone = fromPhone || phoneNum1 || '';
+    
+    return formValues;
+  };
+
   useEffect(() => {
     if (visible && initialValues) {
-      const prefix = addressType === 'from' ? 'from_' : 'to_';
-      form.setFieldsValue({
-        first_name: initialValues[`${prefix}first_name` as keyof Shipment],
-        last_name: initialValues[`${prefix}last_name` as keyof Shipment],
-        address: initialValues[`${prefix}address` as keyof Shipment],
-        address2: initialValues[`${prefix}address2` as keyof Shipment],
-        city: initialValues[`${prefix}city` as keyof Shipment],
-        state: initialValues[`${prefix}state` as keyof Shipment],
-        zip: initialValues[`${prefix}zip` as keyof Shipment],
-        phone: initialValues[`${prefix}phone` as keyof Shipment] || 
-               (addressType === 'to' ? initialValues.phone_num1 : ''),
-      });
+      const formValues = getFormValues();
+      // Set form values when modal opens
+      form.setFieldsValue(formValues);
+    } else if (!visible) {
+      // Reset form when modal is closed
+      form.resetFields();
     }
   }, [visible, initialValues, form, addressType]);
 
@@ -54,20 +73,32 @@ const AddressModal: React.FC<AddressModalProps> = ({
     });
   };
 
+  const handleCancel = () => {
+    form.resetFields();
+    onCancel();
+  };
+
   return (
     <Modal
       title={title}
       open={visible}
       onOk={handleSubmit}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       width={600}
       centered
       mask={true}
       maskClosable={false}
       okText="Save"
       cancelText="Cancel"
+      destroyOnClose={true}
     >
-      <Form form={form} layout="vertical" aria-label={title}>
+      <Form 
+        form={form} 
+        layout="vertical" 
+        aria-label={title}
+        initialValues={visible && initialValues ? getFormValues() : {}}
+        preserve={false}
+      >
         <Form.Item
           label="First Name"
           name="first_name"
