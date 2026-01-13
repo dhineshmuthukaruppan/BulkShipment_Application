@@ -32,10 +32,11 @@ import {
   ContainerOutlined,
   UserOutlined,
   DollarOutlined,
+  NumberOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { SavedAddress, SavedPackage } from '../../types/shipment';
-import { savedAddressService, savedPackageService } from '../../services/shipmentService';
+import { savedAddressService, savedPackageService, orderNumberSettingsService, OrderNumberSettings } from '../../services/shipmentService';
 import './Master.css';
 
 const { TabPane } = Tabs;
@@ -61,6 +62,10 @@ const Master: React.FC<MasterProps> = () => {
   });
   const [balanceForm] = Form.useForm();
   
+  // Order number settings state
+  const [orderNumberSettings, setOrderNumberSettings] = useState<OrderNumberSettings | null>(null);
+  const [orderNumberSettingsForm] = Form.useForm();
+  
   // Modal states
   const [addressModalVisible, setAddressModalVisible] = useState(false);
   const [packageModalVisible, setPackageModalVisible] = useState(false);
@@ -70,14 +75,16 @@ const Master: React.FC<MasterProps> = () => {
   const [packageForm] = Form.useForm();
 
   useEffect(() => {
-    if (activeTab !== 'account') {
-      loadData();
-    } else {
+    if (activeTab === 'account') {
       // Load balance from localStorage when account tab is selected
       const saved = localStorage.getItem(USER_BALANCE_KEY);
       const balance = saved ? parseFloat(saved) : 100.00;
       setUserBalance(balance);
       balanceForm.setFieldsValue({ balance });
+    } else if (activeTab === 'order-number-settings') {
+      loadOrderNumberSettings();
+    } else {
+      loadData();
     }
   }, [activeTab]);
 
@@ -97,6 +104,34 @@ const Master: React.FC<MasterProps> = () => {
       message.error('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadOrderNumberSettings = async () => {
+    setLoading(true);
+    try {
+      const settings = await orderNumberSettingsService.getActive();
+      setOrderNumberSettings(settings);
+      orderNumberSettingsForm.setFieldsValue(settings);
+    } catch (error) {
+      message.error('Failed to load order number settings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOrderNumberSettingsSubmit = async (values: any) => {
+    try {
+      if (orderNumberSettings?.id) {
+        await orderNumberSettingsService.update(orderNumberSettings.id, { ...values, is_active: true });
+        message.success('Order number settings updated successfully');
+      } else {
+        await orderNumberSettingsService.create({ ...values, is_active: true });
+        message.success('Order number settings created successfully');
+      }
+      loadOrderNumberSettings();
+    } catch (error: any) {
+      message.error(error.response?.data?.error || 'Failed to save order number settings');
     }
   };
 
@@ -431,6 +466,14 @@ const Master: React.FC<MasterProps> = () => {
               ),
             },
             {
+              key: 'order-number-settings',
+              label: (
+                <span>
+                  <NumberOutlined /> Order Number Settings
+                </span>
+              ),
+            },
+            {
               key: 'account',
               label: (
                 <span>
@@ -441,7 +484,7 @@ const Master: React.FC<MasterProps> = () => {
           ]}
         />
 
-        {activeTab !== 'account' && (
+        {activeTab !== 'account' && activeTab !== 'order-number-settings' && (
           <div className="master-toolbar">
             <Input
               placeholder={`Search ${activeTab === 'packages' ? 'packages' : 'addresses'}...`}
@@ -462,7 +505,129 @@ const Master: React.FC<MasterProps> = () => {
           </div>
         )}
 
-        {activeTab === 'account' ? (
+        {activeTab === 'order-number-settings' ? (
+          <Card
+            style={{
+              marginTop: 24,
+              maxWidth: 800,
+            }}
+          >
+            <Title level={4} style={{ marginBottom: 24 }}>
+              <NumberOutlined style={{ marginRight: 8 }} />
+              Sequential Order Number Configuration
+            </Title>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
+              Configure how sequential order numbers are generated for empty order_number columns in CSV uploads.
+              These settings will be used when generating IDs like ORD-0001, ORD-0002, etc.
+            </Text>
+            {loading ? (
+              <Skeleton active paragraph={{ rows: 6 }} />
+            ) : (
+              <Form
+                form={orderNumberSettingsForm}
+                layout="vertical"
+                onFinish={handleOrderNumberSettingsSubmit}
+                initialValues={{
+                  prefix: 'ORD',
+                  starting_number: 1,
+                  number_format: '0000',
+                  separator: '-',
+                }}
+              >
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Prefix"
+                      name="prefix"
+                      rules={[
+                        { required: true, message: 'Please enter prefix' },
+                        { max: 20, message: 'Prefix must be 20 characters or less' },
+                      ]}
+                      tooltip="Prefix for order numbers (e.g., 'ORD', 'ORDER', 'SHIP')"
+                    >
+                      <Input placeholder="ORD" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Separator"
+                      name="separator"
+                      rules={[{ max: 5, message: 'Separator must be 5 characters or less' }]}
+                      tooltip="Separator between prefix and number (e.g., '-', '_', or leave empty)"
+                    >
+                      <Input placeholder="-" maxLength={5} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Number Format"
+                      name="number_format"
+                      rules={[
+                        { required: true, message: 'Please enter number format' },
+                        { pattern: /^0+$/, message: 'Format must contain only zeros (e.g., 0000, 00000)' },
+                      ]}
+                      tooltip="Number format: '0000' = 4 digits (ORD-0001), '00000' = 5 digits (ORD-00001)"
+                    >
+                      <Input placeholder="0000" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item
+                      label="Starting Number"
+                      name="starting_number"
+                      rules={[
+                        { required: true, message: 'Please enter starting number' },
+                        { type: 'number', min: 1, message: 'Starting number must be 1 or greater' },
+                      ]}
+                      tooltip="The starting number for sequential IDs"
+                    >
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        min={1}
+                        placeholder="1"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Form.Item shouldUpdate={(prevValues, currentValues) => 
+                  prevValues.prefix !== currentValues.prefix ||
+                  prevValues.separator !== currentValues.separator ||
+                  prevValues.number_format !== currentValues.number_format ||
+                  prevValues.starting_number !== currentValues.starting_number
+                }>
+                  {({ getFieldsValue }) => {
+                    const values = getFieldsValue();
+                    const prefix = values.prefix || 'ORD';
+                    const separator = values.separator || '-';
+                    const format = values.number_format || '0000';
+                    const startNum = values.starting_number || 1;
+                    // Calculate padding from format (count zeros)
+                    const padding = format.length;
+                    const formattedNum = String(startNum).padStart(padding, '0');
+                    const example = `${prefix}${separator}${formattedNum}`;
+                    return (
+                      <Text type="secondary">
+                        Example: <Text strong>{example}</Text>
+                      </Text>
+                    );
+                  }}
+                </Form.Item>
+                <Form.Item>
+                  <Space>
+                    <Button type="primary" htmlType="submit" icon={<EditOutlined />}>
+                      Save Settings
+                    </Button>
+                    <Text type="secondary">
+                      These settings will be used for all future CSV uploads with empty order_number columns.
+                    </Text>
+                  </Space>
+                </Form.Item>
+              </Form>
+            )}
+          </Card>
+        ) : activeTab === 'account' ? (
           <Card
             style={{
               marginTop: 24,

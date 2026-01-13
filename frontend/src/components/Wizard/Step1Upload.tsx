@@ -4,7 +4,7 @@ import type { UploadProps } from 'antd';
 import type { Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { InboxOutlined, DownloadOutlined, LoadingOutlined, FileTextOutlined, DeleteOutlined, PlayCircleOutlined, CalendarOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { InboxOutlined, DownloadOutlined, FileTextOutlined, DeleteOutlined, PlayCircleOutlined, CalendarOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { shipmentService } from '../../services/shipmentService';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { setShipments, setCurrentStep, loadDraft, deleteDraft, clearSelectedShipments } from '../../store/slices/wizardSlice';
@@ -64,8 +64,20 @@ const Step1Upload: React.FC = () => {
       
       message.success(`Successfully parsed ${response.count} shipments! Please review the preview.`);
     } catch (error: any) {
-      message.error(error.response?.data?.error || 'Failed to upload file');
+      const errorMessage = error.message || 
+                         error.response?.data?.error || 
+                         error.response?.data?.message ||
+                         'Failed to upload file. Please check your connection and try again.';
+      message.error(errorMessage, 5);
       console.error('Upload error:', error);
+      
+      // Log detailed error for debugging
+      if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response data:', error.response.data);
+      } else if (error.request) {
+        console.error('No response received. Is the backend server running?');
+      }
     } finally {
       setLoading(false);
     }
@@ -235,14 +247,10 @@ const Step1Upload: React.FC = () => {
         </Card>
 
         <Card>
-          <Spin spinning={loading} tip="Processing your file...">
+          <Spin spinning={loading}>
             <Dragger {...uploadProps} style={{ padding: '40px' }} disabled={!processDate || loading}>
               <p className="ant-upload-drag-icon">
-                {loading ? (
-                  <LoadingOutlined style={{ fontSize: '48px', color: '#1890ff' }} spin />
-                ) : (
-                  <InboxOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
-                )}
+                <InboxOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
               </p>
               <p className="ant-upload-text">
                 {loading ? 'Processing your file...' : 'Click or drag CSV file to this area to upload'}
@@ -397,13 +405,7 @@ const Step1Upload: React.FC = () => {
             columns={previewColumns}
             dataSource={previewData}
             rowKey="id"
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total) => `Total: ${total} shipments`,
-              pageSizeOptions: ['10', '20', '50', '100'],
-            }}
+            pagination={false}
             scroll={{ 
               x: 'max-content',
               y: '400px'

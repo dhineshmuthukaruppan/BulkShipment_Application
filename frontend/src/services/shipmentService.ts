@@ -14,12 +14,34 @@ export const shipmentService = {
     }
     // Use axios directly for file uploads to avoid Content-Type header conflicts
     // Axios will automatically set the correct Content-Type with boundary for FormData
-    const response = await axios.post(`${API_URL}/shipments/upload_csv/`, formData, {
-      headers: {
-        // Don't set Content-Type - let axios/browser set it automatically with boundary
-      },
-    });
-    return response.data;
+    try {
+      const response = await axios.post(`${API_URL}/shipments/upload_csv/`, formData, {
+        headers: {
+          // Don't set Content-Type - let axios/browser set it automatically with boundary
+        },
+        timeout: 60000, // 60 second timeout for large files
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+      });
+      return response.data;
+    } catch (error: any) {
+      // Provide more detailed error messages
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Upload timeout - the file may be too large or the server is not responding');
+      } else if (error.response) {
+        // Server responded with error status
+        const errorMessage = error.response.data?.error || 
+                           error.response.data?.message || 
+                           `Server error: ${error.response.status} ${error.response.statusText}`;
+        throw new Error(errorMessage);
+      } else if (error.request) {
+        // Request was made but no response received
+        throw new Error('No response from server. Please check if the backend server is running on http://localhost:8000');
+      } else {
+        // Something else happened
+        throw new Error(error.message || 'Failed to upload file');
+      }
+    }
   },
 
   // Get all shipments
@@ -133,5 +155,43 @@ export const savedPackageService = {
   setDefault: async (id: number): Promise<SavedPackage> => {
     const response = await api.patch(`/saved-packages/${id}/`, { is_default: true });
     return response.data;
+  },
+};
+
+export interface OrderNumberSettings {
+  id?: number;
+  prefix: string;
+  starting_number: number;
+  number_format: string;
+  separator: string;
+  is_active: boolean;
+  example?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export const orderNumberSettingsService = {
+  getActive: async (): Promise<OrderNumberSettings> => {
+    const response = await api.get('/order-number-settings/active/');
+    return response.data;
+  },
+  getAll: async (): Promise<OrderNumberSettings[]> => {
+    const response = await api.get('/order-number-settings/');
+    return response.data;
+  },
+  getById: async (id: number): Promise<OrderNumberSettings> => {
+    const response = await api.get(`/order-number-settings/${id}/`);
+    return response.data;
+  },
+  create: async (data: Partial<OrderNumberSettings>): Promise<OrderNumberSettings> => {
+    const response = await api.post('/order-number-settings/', data);
+    return response.data;
+  },
+  update: async (id: number, data: Partial<OrderNumberSettings>): Promise<OrderNumberSettings> => {
+    const response = await api.patch(`/order-number-settings/${id}/`, data);
+    return response.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/order-number-settings/${id}/`);
   },
 };

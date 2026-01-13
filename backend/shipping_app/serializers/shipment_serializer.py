@@ -49,6 +49,11 @@ class ShipmentSerializer(serializers.ModelSerializer):
         """Override update to track which parts have been reviewed"""
         validation_flags = list(instance.validation_flags or [])
         
+        # If status is being explicitly set, preserve it and skip auto-calculation
+        status_explicitly_set = 'status' in validated_data
+        if status_explicitly_set:
+            instance._skip_auto_status = True
+        
         # Check if sender or recipient address fields are being updated
         sender_fields = ['from_first_name', 'from_last_name', 'from_address', 'from_city', 'from_state', 'from_zip']
         recipient_fields = ['to_first_name', 'to_last_name', 'to_address', 'to_city', 'to_state', 'to_zip']
@@ -82,5 +87,12 @@ class ShipmentSerializer(serializers.ModelSerializer):
         validated_data['validation_flags'] = validation_flags
         
         # Call parent to perform the update
-        return super().update(instance, validated_data)
+        updated_instance = super().update(instance, validated_data)
+        
+        # Ensure status is preserved if it was explicitly set
+        if status_explicitly_set and hasattr(instance, '_skip_auto_status'):
+            # Refresh from DB to get the actual saved status
+            updated_instance.refresh_from_db()
+        
+        return updated_instance
 

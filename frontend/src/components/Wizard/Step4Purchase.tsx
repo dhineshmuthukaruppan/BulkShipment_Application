@@ -16,7 +16,7 @@ import {
   PrinterOutlined,
 } from '@ant-design/icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setCurrentStep, setShipments } from '../../store/slices/wizardSlice';
+import { setCurrentStep, setShipments, setLabelSize } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
 import { generateShippingLabelsPDF } from '../../utils/pdfGenerator';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -27,7 +27,7 @@ const Step4Purchase: React.FC = () => {
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const { shipments, totalCost } = useAppSelector((state) => state.wizard);
-  const [labelSize, setLabelSize] = useState('letter');
+  const [labelSize, setLabelSizeLocal] = useState('letter');
   const [printSize, setPrintSize] = useState('letter');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
@@ -108,7 +108,12 @@ const Step4Purchase: React.FC = () => {
               <Title level={4}>Label Size Selection</Title>
               <Radio.Group 
                 value={labelSize} 
-                onChange={(e) => setLabelSize(e.target.value)}
+                onChange={(e) => {
+                  const newSize = e.target.value as 'letter' | '4x6';
+                  setLabelSizeLocal(newSize);
+                  setPrintSize(newSize);
+                  dispatch(setLabelSize(newSize));
+                }}
                 style={{ marginTop: 16 }}
               >
                 <Space direction="vertical">

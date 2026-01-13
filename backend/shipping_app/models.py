@@ -209,22 +209,93 @@ class Shipment(models.Model):
         original_status = self.status
         status_in_update_fields = update_fields is not None and 'status' in update_fields
         
-        # Auto-calculate status unless explicitly set via update_fields
-        if not status_in_update_fields:
+        # Check if status should be skipped from auto-calculation
+        should_skip_auto_status = hasattr(self, '_skip_auto_status') and self._skip_auto_status
+        
+        # Auto-calculate status unless explicitly set via update_fields or skip flag
+        if not status_in_update_fields and not should_skip_auto_status:
             calculated_status = self.calculate_status()
-            # Only auto-update if status wasn't manually set to a different value
-            # (This handles the case where user explicitly sets status via API)
-            if not hasattr(self, '_skip_auto_status') or not self._skip_auto_status:
-                self.status = calculated_status
+            self.status = calculated_status
             # If update_fields is specified, add status to it
-            if update_fields is not None and not hasattr(self, '_skip_auto_status'):
+            if update_fields is not None:
+                kwargs['update_fields'] = list(update_fields) + ['status']
+        elif should_skip_auto_status:
+            # Status was explicitly set, ensure it's included in update_fields if specified
+            if update_fields is not None and 'status' not in update_fields:
                 kwargs['update_fields'] = list(update_fields) + ['status']
         
-        # Clear skip flag
+        # Clear skip flag after using it
         if hasattr(self, '_skip_auto_status'):
             delattr(self, '_skip_auto_status')
             
         super().save(*args, **kwargs)
+
+
+class OrderNumberSettings(models.Model):
+    """Master configuration for sequential order number generation"""
+    prefix = models.CharField(max_length=20, default='ORD', help_text="Prefix for order numbers (e.g., 'ORD', 'ORDER', 'SHIP')")
+    starting_number = models.IntegerField(default=1, validators=[MinValueValidator(1)], help_text="Starting number for sequential IDs")
+    number_format = models.CharField(
+        max_length=10, 
+        default='0000', 
+        help_text="Number format: '0000' = 4 digits (ORD-0001), '00000' = 5 digits (ORD-00001)"
+    )
+    separator = models.CharField(max_length=5, default='-', help_text="Separator between prefix and number (e.g., '-', '_', or empty)")
+    is_active = models.BooleanField(default=True, help_text="Whether this configuration is active")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Order Number Settings"
+        ordering = ['-is_active', '-created_at']
+
+    def __str__(self):
+        example = self.get_example()
+        return f"{self.prefix}{self.separator}{example} (Starting: {self.starting_number})"
+    
+    def get_example(self):
+        """Get an example order number with current settings"""
+        # Convert number_format like "0000" to Python format spec "04d"
+        if self.number_format.isdigit():
+            padding_width = len(self.number_format)
+            format_spec = f"0{padding_width}d"
+        else:
+            format_spec = self.number_format
+        
+        format_str = f"{{:{format_spec}}}"
+        formatted_num = format_str.format(self.starting_number)
+        return f"{self.prefix}{self.separator}{formatted_num}"
+    
+    def generate_order_number(self, sequence_number: int) -> str:
+        """Generate an order number for a given sequence number"""
+        # Convert number_format like "0000" to Python format spec "04d"
+        # "0000" means 4 digits with zero padding
+        if self.number_format.isdigit():
+            # Count zeros to determine padding width
+            padding_width = len(self.number_format)
+            format_spec = f"0{padding_width}d"
+        else:
+            # Already a format spec like "04d"
+            format_spec = self.number_format
+        
+        format_str = f"{{:{format_spec}}}"
+        formatted_num = format_str.format(sequence_number)
+        return f"{self.prefix}{self.separator}{formatted_num}"
+
+    @classmethod
+    def get_active_settings(cls):
+        """Get the active order number settings, or create default if none exist"""
+        settings = cls.objects.filter(is_active=True).first()
+        if not settings:
+            # Create default settings
+            settings = cls.objects.create(
+                prefix='ORD',
+                starting_number=1,
+                number_format='0000',
+                separator='-',
+                is_active=True
+            )
+        return settings
 
 
 class ShippingLabel(models.Model):

@@ -18,6 +18,7 @@ interface WizardState {
   selectedShipments: number[];
   totalCost: number;
   drafts: Draft[];
+  labelSize: 'letter' | '4x6';
 }
 
 const initialState: WizardState = {
@@ -26,6 +27,7 @@ const initialState: WizardState = {
   selectedShipments: [],
   totalCost: 0,
   drafts: [],
+  labelSize: 'letter',
 };
 
 const wizardSlice = createSlice({
@@ -78,6 +80,10 @@ const wizardSlice = createSlice({
       state.shipments = [];
       state.selectedShipments = [];
       state.totalCost = 0;
+      state.labelSize = 'letter';
+    },
+    setLabelSize: (state, action: PayloadAction<'letter' | '4x6'>) => {
+      state.labelSize = action.payload;
     },
     // Draft management
     saveDraft: (state, action: PayloadAction<{ name?: string; step: number }>) => {
@@ -138,6 +144,7 @@ export const {
   loadDraft,
   deleteDraft,
   updateDraft,
+  setLabelSize,
 } = wizardSlice.actions;
 
 export default wizardSlice.reducer;

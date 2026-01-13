@@ -43,14 +43,17 @@ export const generateShippingLabelsPDF = (
 
   // Adjust font sizes and spacing based on page size
   const isSmallFormat = options.pageSize === '4x6';
-  const titleFontSize = isSmallFormat ? 10 : 12;
-  const sectionFontSize = isSmallFormat ? 8 : 10;
-  const contentFontSize = isSmallFormat ? 7 : 9;
-  const lineSpacing = isSmallFormat ? 4 : 5;
-  const sectionSpacing = isSmallFormat ? 3 : 5;
-  const margin = isSmallFormat ? 5 : 10;
-  const topMargin = isSmallFormat ? 10 : 15;
-  const startY = isSmallFormat ? 15 : 30;
+  const isA4 = options.pageSize === 'letter';
+  
+  // A4/Letter specific settings - optimized for perfect A4 fit
+  const titleFontSize = isSmallFormat ? 10 : 16;
+  const sectionFontSize = isSmallFormat ? 8 : 11;
+  const contentFontSize = isSmallFormat ? 7 : 10;
+  const lineSpacing = isSmallFormat ? 4 : 6;
+  const sectionSpacing = isSmallFormat ? 3 : 7;
+  const margin = isSmallFormat ? 5 : 15;
+  const topMargin = isSmallFormat ? 10 : 20;
+  const startY = isSmallFormat ? 15 : 35;
 
   shippedShipments.forEach((shipment, index) => {
     // Add new page for each shipment (except the first one)
@@ -62,36 +65,59 @@ export const generateShippingLabelsPDF = (
     pdf.setFontSize(titleFontSize);
     pdf.setFont('helvetica', 'bold');
 
-    // Title
+    // Title - centered at top
     pdf.text('SHIPPING LABEL', pageWidth / 2, topMargin, { align: 'center' });
 
-    // Draw border
-    pdf.setLineWidth(0.5);
-    pdf.rect(margin, topMargin + 5, pageWidth - (margin * 2), pageHeight - (topMargin + 15));
+    // Draw border around entire label area - optimized for A4 with proper padding
+    pdf.setLineWidth(1);
+    const borderPadding = 8; // Increased padding to prevent text overlap
+    const borderY = topMargin + 8;
+    const borderHeight = pageHeight - (topMargin + 20);
+    const borderX = margin - borderPadding;
+    const borderWidth = pageWidth - (margin * 2) + (borderPadding * 2);
+    
+    pdf.rect(borderX, borderY, borderWidth, borderHeight);
+
+    // Define content area with proper padding inside border
+    const contentPadding = 5; // Padding inside border to prevent text overlap
+    const contentX = borderX + contentPadding;
+    const contentWidth = borderWidth - (contentPadding * 2);
+    const contentBottomY = borderY + borderHeight - contentPadding;
 
     let yPosition = startY;
+    
+    // Add a subtle divider line below title - use contentX for proper padding
+    if (isA4) {
+      pdf.setLineWidth(0.5);
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(contentX, topMargin + 12, contentX + contentWidth, topMargin + 12);
+      pdf.setDrawColor(0, 0, 0); // Reset to black
+    }
 
-    // From Address Section
+    // From Address Section - use contentX for proper padding
     pdf.setFontSize(sectionFontSize);
     pdf.setFont('helvetica', 'bold');
-    pdf.text('FROM:', margin + 2, yPosition);
-    yPosition += lineSpacing + 1;
+    pdf.text('FROM:', contentX, yPosition);
+    yPosition += lineSpacing + 2;
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(contentFontSize);
+    
     if (shipment.from_first_name || shipment.from_last_name) {
       const name = `${shipment.from_first_name || ''} ${shipment.from_last_name || ''}`.trim();
       if (name) {
-        pdf.text(name, margin + 2, yPosition);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(name, contentX, yPosition);
         yPosition += lineSpacing;
+        pdf.setFont('helvetica', 'normal');
       }
     }
     if (shipment.from_address) {
-      pdf.text(shipment.from_address, margin + 2, yPosition);
+      pdf.text(shipment.from_address, contentX, yPosition);
       yPosition += lineSpacing;
     }
     if (shipment.from_address2) {
-      pdf.text(shipment.from_address2, margin + 2, yPosition);
+      pdf.text(shipment.from_address2, contentX, yPosition);
       yPosition += lineSpacing;
     }
     const fromCityState = [
@@ -102,33 +128,44 @@ export const generateShippingLabelsPDF = (
       .filter(Boolean)
       .join(', ');
     if (fromCityState) {
-      pdf.text(fromCityState, margin + 2, yPosition);
+      pdf.text(fromCityState, contentX, yPosition);
       yPosition += lineSpacing;
     }
 
     yPosition += sectionSpacing;
+    
+    // Add divider line between FROM and TO sections for A4
+    if (isA4) {
+      pdf.setLineWidth(0.3);
+      pdf.setDrawColor(220, 220, 220);
+      pdf.line(contentX, yPosition - 2, contentX + contentWidth, yPosition - 2);
+      pdf.setDrawColor(0, 0, 0);
+      yPosition += 2;
+    }
 
-    // To Address Section
+    // To Address Section - use contentX for proper padding
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(sectionFontSize);
-    pdf.text('TO:', margin + 2, yPosition);
-    yPosition += lineSpacing + 1;
+    pdf.text('TO:', contentX, yPosition);
+    yPosition += lineSpacing + 2;
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(contentFontSize);
     if (shipment.to_first_name || shipment.to_last_name) {
       const name = `${shipment.to_first_name || ''} ${shipment.to_last_name || ''}`.trim();
       if (name) {
-        pdf.text(name, margin + 2, yPosition);
+        pdf.setFont('helvetica', 'bold');
+        pdf.text(name, contentX, yPosition);
         yPosition += lineSpacing;
+        pdf.setFont('helvetica', 'normal');
       }
     }
     if (shipment.to_address) {
-      pdf.text(shipment.to_address, margin + 2, yPosition);
+      pdf.text(shipment.to_address, contentX, yPosition);
       yPosition += lineSpacing;
     }
     if (shipment.to_address2) {
-      pdf.text(shipment.to_address2, margin + 2, yPosition);
+      pdf.text(shipment.to_address2, contentX, yPosition);
       yPosition += lineSpacing;
     }
     const toCityState = [
@@ -139,70 +176,132 @@ export const generateShippingLabelsPDF = (
       .filter(Boolean)
       .join(', ');
     if (toCityState) {
-      pdf.text(toCityState, margin + 2, yPosition);
+      pdf.text(toCityState, contentX, yPosition);
       yPosition += lineSpacing;
     }
 
     yPosition += sectionSpacing;
+    
+    // Add divider line before package details for A4
+    if (isA4) {
+      pdf.setLineWidth(0.3);
+      pdf.setDrawColor(220, 220, 220);
+      pdf.line(contentX, yPosition - 2, contentX + contentWidth, yPosition - 2);
+      pdf.setDrawColor(0, 0, 0);
+      yPosition += 2;
+    }
 
-    // Package Details Section
+    // Package Details Section - use contentX for proper padding
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(sectionFontSize);
-    pdf.text('PACKAGE DETAILS:', margin + 2, yPosition);
-    yPosition += lineSpacing + 1;
+    pdf.text('PACKAGE DETAILS:', contentX, yPosition);
+    yPosition += lineSpacing + 2;
 
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(contentFontSize);
-    const dimensions = `${shipment.length}" × ${shipment.width}" × ${shipment.height}"`;
-    const weight = `${shipment.weight_lbs} lb ${shipment.weight_oz} oz`;
-    pdf.text(dimensions, margin + 2, yPosition);
+    
+    // Dimensions - formatted clearly with proper padding
+    const dimensions = `${shipment.length || 0}" × ${shipment.width || 0}" × ${shipment.height || 0}"`;
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Dimensions:', contentX, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(dimensions, contentX + (isA4 ? 35 : 20), yPosition);
     yPosition += lineSpacing;
-    pdf.text(weight, margin + 2, yPosition);
+    
+    // Weight - formatted clearly with proper padding
+    const weight = `${shipment.weight_lbs || 0} lb ${shipment.weight_oz || 0} oz`;
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Weight:', contentX, yPosition);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text(weight, contentX + (isA4 ? 35 : 20), yPosition);
     yPosition += lineSpacing;
 
-    // Order Information
+    // Order Information - use contentX for proper padding
     if (shipment.order_number) {
       yPosition += sectionSpacing - 2;
+      if (isA4) {
+        pdf.setLineWidth(0.3);
+        pdf.setDrawColor(220, 220, 220);
+        pdf.line(contentX, yPosition - 2, contentX + contentWidth, yPosition - 2);
+        pdf.setDrawColor(0, 0, 0);
+        yPosition += 2;
+      }
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(contentFontSize);
-      pdf.text(`Order #: ${shipment.order_number}`, margin + 2, yPosition);
+      pdf.text(`Order Number: ${shipment.order_number}`, contentX, yPosition);
       yPosition += lineSpacing;
     }
 
     // Bottom section - Tracking, Service, Cost
-    const bottomY = pageHeight - (isSmallFormat ? 8 : 12);
-    const bottomY2 = pageHeight - (isSmallFormat ? 4 : 8);
+    // Add divider line before bottom section for A4 with proper padding
+    if (isA4) {
+      const bottomSectionY = contentBottomY - (isSmallFormat ? 15 : 20);
+      pdf.setLineWidth(0.5);
+      pdf.setDrawColor(200, 200, 200);
+      pdf.line(contentX, bottomSectionY, contentX + contentWidth, bottomSectionY);
+      pdf.setDrawColor(0, 0, 0);
+    }
+    
+    // Bottom positions with proper padding from border
+    const bottomY = contentBottomY - (isSmallFormat ? 8 : 15);
+    const bottomY2 = contentBottomY - (isSmallFormat ? 4 : 8);
+    const bottomY3 = contentBottomY - (isSmallFormat ? 0 : 2);
 
-    // Tracking Number (if available)
+    // Tracking Number (if available) - centered with proper padding
     if (shipment.tracking_number) {
       pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(isSmallFormat ? 8 : 10);
-      pdf.text(`Tracking: ${shipment.tracking_number}`, pageWidth / 2, bottomY, {
+      pdf.setFontSize(isA4 ? 11 : (isSmallFormat ? 8 : 10));
+      pdf.text(`Tracking Number: ${shipment.tracking_number}`, pageWidth / 2, bottomY, {
         align: 'center',
       });
     }
 
-    // Shipping Service
-    if (shipment.shipping_service) {
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(contentFontSize);
-      pdf.text(
-        `Service: ${shipment.shipping_service}`,
-        pageWidth / 2,
-        bottomY2,
-        { align: 'center' }
-      );
-    }
+    // Shipping Service and Cost - side by side for A4 with proper padding
+    if (isA4) {
+      // Service on left with padding from border
+      if (shipment.shipping_service) {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(contentFontSize);
+        pdf.text(
+          `Service: ${shipment.shipping_service}`,
+          contentX,
+          bottomY2
+        );
+      }
+      
+      // Cost on right with padding from border
+      if (shipment.shipping_cost) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(contentFontSize);
+        pdf.text(
+          `Cost: $${Number(shipment.shipping_cost).toFixed(2)}`,
+          contentX + contentWidth,
+          bottomY2,
+          { align: 'right' }
+        );
+      }
+    } else {
+      // For 4x6, stack vertically
+      if (shipment.shipping_service) {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(contentFontSize);
+        pdf.text(
+          `Service: ${shipment.shipping_service}`,
+          pageWidth / 2,
+          bottomY2,
+          { align: 'center' }
+        );
+      }
 
-    // Shipping Cost
-    if (shipment.shipping_cost) {
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(contentFontSize);
-      pdf.text(
-        `Cost: $${Number(shipment.shipping_cost).toFixed(2)}`,
-        margin + 2,
-        bottomY2
-      );
+      if (shipment.shipping_cost) {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(contentFontSize);
+        pdf.text(
+          `Cost: $${Number(shipment.shipping_cost).toFixed(2)}`,
+          contentX,
+          bottomY3
+        );
+      }
     }
   });
 

@@ -8,11 +8,12 @@ from decimal import Decimal
 from datetime import datetime
 import traceback
 
-from shipping_app.models import Shipment, SavedAddress, SavedPackage
+from shipping_app.models import Shipment, SavedAddress, SavedPackage, OrderNumberSettings
 from shipping_app.serializers import (
     ShipmentSerializer,
     SavedAddressSerializer,
-    SavedPackageSerializer
+    SavedPackageSerializer,
+    OrderNumberSettingsSerializer
 )
 from shipping_app.services import (
     CSVParser,
@@ -556,3 +557,35 @@ class SavedPackageViewSet(viewsets.ModelViewSet):
         # If this is set as default, unset all others
         if instance.is_default:
             SavedPackage.objects.filter(is_default=True).exclude(id=instance.id).update(is_default=False)
+
+
+class OrderNumberSettingsViewSet(viewsets.ModelViewSet):
+    """ViewSet for OrderNumberSettings CRUD operations"""
+    queryset = OrderNumberSettings.objects.all()
+    serializer_class = OrderNumberSettingsSerializer
+    
+    def get_queryset(self):
+        """Return active settings or create default if none exist"""
+        OrderNumberSettings.get_active_settings()  # Ensure default exists
+        return super().get_queryset()
+    
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """Get the active order number settings"""
+        settings = OrderNumberSettings.get_active_settings()
+        serializer = self.get_serializer(settings)
+        return Response(serializer.data)
+    
+    def perform_create(self, serializer):
+        """Override create to handle active settings logic"""
+        instance = serializer.save()
+        # If this is set as active, unset all others
+        if instance.is_active:
+            OrderNumberSettings.objects.filter(is_active=True).exclude(id=instance.id).update(is_active=False)
+    
+    def perform_update(self, serializer):
+        """Override update to handle active settings logic"""
+        instance = serializer.save()
+        # If this is set as active, unset all others
+        if instance.is_active:
+            OrderNumberSettings.objects.filter(is_active=True).exclude(id=instance.id).update(is_active=False)

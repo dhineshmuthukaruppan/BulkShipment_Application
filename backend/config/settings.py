@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-k-i=-)atkk-mc6@3=#+1lv1&w_pl2e^l0_y=^fd&)g(^gxmvki
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']  # Allow all hosts in development
 
 
 # Application definition
@@ -52,6 +52,24 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# REST Framework configuration
+# Disable CSRF for API endpoints in development
+# DRF handles authentication/authorization separately
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.MultiPartParser',
+        'rest_framework.parsers.FormParser',
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+}
 
 ROOT_URLCONF = 'config.urls'
 
@@ -125,20 +143,6 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# REST Framework configuration
-REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
-    ],
-    'DEFAULT_PARSER_CLASSES': [
-        'rest_framework.parsers.JSONParser',
-        'rest_framework.parsers.MultiPartParser',
-        'rest_framework.parsers.FormParser',
-    ],
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-    ],
-}
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
@@ -147,6 +151,34 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Allow all methods and headers for development
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+# Disable CSRF for API endpoints (using token-based auth instead)
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 # Logging configuration
 LOGGING = {
@@ -183,7 +215,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# API Keys (with fallback to empty strings for development)
+# Address Validation API Keys
+# Priority: USPS Addresses 3.0 > USPS Web Tools (Legacy) > Google Maps > SmartyStreets > Lob > Basic validation
+# At least one API key should be configured for production use
+# All APIs have free tiers available
+
+# USPS Addresses 3.0 API (NEW - OAuth-based, replaces Web Tools API)
+# Web Tools API shuts down January 25, 2026 - migrate to Addresses 3.0
+# Sign up at: https://developers.usps.com/
+# Get credentials: Register app at https://developers.usps.com/ -> My Apps -> Add App
+USPS_CLIENT_ID = os.getenv('USPS_CLIENT_ID', '')  # Consumer Key from your app
+USPS_CLIENT_SECRET = os.getenv('USPS_CLIENT_SECRET', '')  # Consumer Secret from your app
+USPS_USE_TEM = os.getenv('USPS_USE_TEM', 'False').lower() == 'true'  # Use Testing Environment for Mailers
+
+# USPS Web Tools API (LEGACY - Deprecated, shutting down Jan 25, 2026)
+# Only use if you haven't migrated to Addresses 3.0 yet
 USPS_API_KEY = os.getenv('USPS_API_KEY', '')
+
+# Google Maps Geocoding API (Free tier: $200/month credit)
+# Get API key at: https://console.cloud.google.com/google/maps-apis
 GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')
-SMARTY_API_KEY = os.getenv('SMARTY_API_KEY', '')
+
+# SmartyStreets API (Free tier: 250 lookups/month)
+# Sign up at: https://www.smartystreets.com/
+# Note: Requires both auth-id and auth-token
+SMARTY_AUTH_ID = os.getenv('SMARTY_AUTH_ID', '')
+SMARTY_AUTH_TOKEN = os.getenv('SMARTY_AUTH_TOKEN', '')
+
+# Lob Address Verification API (Free tier: 10,000 verifications/month)
+# Sign up at: https://lob.com/
+# Note: API key should be base64 encoded (username:password)
+LOB_API_KEY = os.getenv('LOB_API_KEY', '')

@@ -8,13 +8,14 @@ import Step2Review from './Step2Review';
 import Step3Shipping from './Step3Shipping';
 import Step4Purchase from './Step4Purchase';
 import { useTheme } from '../../contexts/ThemeContext';
+import { generateShippingLabelsPDF } from '../../utils/pdfGenerator';
 
 const { Title, Paragraph } = Typography;
 
 const WizardSteps: React.FC = () => {
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
-  const { currentStep, shipments } = useAppSelector((state) => state.wizard);
+  const { currentStep, shipments, labelSize } = useAppSelector((state) => state.wizard);
 
   const steps = [
     {
@@ -41,9 +42,23 @@ const WizardSteps: React.FC = () => {
   };
 
   const handlePrint = () => {
-    // Simulate print - in a real app, this would open print dialog
-    message.success('Print dialog opened. In a production app, this would open the browser print dialog.');
-    window.print();
+    // Filter only shipped products (those with labels)
+    const shippedShipments = shipments.filter(s => s.has_label === true);
+    
+    if (shippedShipments.length === 0) {
+      message.warning('No shipped products available to print. Please purchase labels first.');
+      return;
+    }
+
+    try {
+      generateShippingLabelsPDF(shippedShipments, {
+        pageSize: labelSize || 'letter',
+        orientation: 'portrait',
+      });
+      message.success(`Generated PDF with ${shippedShipments.length} shipping label(s) in ${labelSize === 'letter' ? 'A4/Letter' : '4x6'} format`);
+    } catch (error: any) {
+      message.error(error.message || 'Failed to generate PDF');
+    }
   };
 
   const handleStartOver = () => {

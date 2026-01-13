@@ -29,6 +29,7 @@ import {
   BoxPlotOutlined,
   SaveOutlined,
   FilterOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -65,12 +66,14 @@ const Step2Review: React.FC = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [animatingShipments, setAnimatingShipments] = useState<Set<number>>(new Set());
   const [filters, setFilters] = useState<{
     status?: string;
     shipFromAddress?: string;
     shipToAddress?: string;
     packageDetails?: string;
     orderNumber?: string;
+    validationIssue?: string; // New filter for validation issues
   }>({});
 
   useEffect(() => {
@@ -316,30 +319,96 @@ const Step2Review: React.FC = () => {
     return `${dims}\n${weight}`;
   };
 
-  // Handle status toggle (click to toggle between Ready and Needs Review)
-  const handleStatusToggle = async (shipment: Shipment) => {
-    // Only allow toggle between 'ready' and 'needs_review', not 'invalid'
-    if (shipment.status === 'invalid') {
-      message.warning('Cannot toggle invalid status. Please fix required fields first.');
+  // Handle approve action - change status to ready
+  const handleApprove = async (shipment: Shipment) => {
+    if (shipment.status === 'ready') {
+      return; // Already approved
+    }
+
+    try {
+      const updated = await shipmentService.updateShipment(shipment.id, { status: 'ready' });
+      dispatch(updateShipment(updated));
+      message.success('Shipment approved successfully');
+    } catch (error) {
+      message.error('Failed to approve shipment');
+    }
+  };
+
+  // Handle approve all selected shipments
+  const handleApproveAll = async () => {
+    if (selectedShipments.length === 0) {
+      message.warning('No shipments selected');
       return;
     }
 
     try {
-      const newStatus = shipment.status === 'ready' ? 'needs_review' : 'ready';
-      const updated = await shipmentService.updateShipment(shipment.id, { status: newStatus });
-      dispatch(updateShipment(updated));
-      
-      if (newStatus === 'ready') {
-        message.success('✓ Marked ready');
-      } else {
-        message.info('Marked as needs review');
+      // Filter out already approved shipments
+      const toApprove = shipments.filter(
+        s => selectedShipments.includes(s.id) && s.status !== 'ready'
+      );
+
+      if (toApprove.length === 0) {
+        message.info('All selected shipments are already approved');
+        return;
       }
-    } catch (error) {
-      message.error('Failed to update status');
+
+      // Start animation for all selected shipments
+      setAnimatingShipments(new Set(selectedShipments));
+
+      // Approve all selected shipments - update status to 'ready' explicitly
+      const approvePromises = selectedShipments.map(async (id) => {
+        try {
+          // Explicitly set status to 'ready'
+          const updated = await shipmentService.updateShipment(id, { status: 'ready' });
+          return updated;
+        } catch (error) {
+          console.error(`Failed to approve shipment ${id}:`, error);
+          throw error;
+        }
+      });
+
+      const updatedShipments = await Promise.all(approvePromises);
+      
+      // Verify all shipments were updated correctly
+      const failedUpdates = updatedShipments.filter(s => s.status !== 'ready');
+      if (failedUpdates.length > 0) {
+        console.warn('Some shipments were not updated to ready status:', failedUpdates);
+      }
+      
+      // Fetch the latest data for all updated shipments to ensure we have the correct status
+      const refreshedShipments = await Promise.all(
+        selectedShipments.map(id => shipmentService.getShipment(id))
+      );
+      
+      // Verify refreshed shipments have correct status
+      refreshedShipments.forEach(s => {
+        if (selectedShipments.includes(s.id) && s.status !== 'ready') {
+          console.warn(`Shipment ${s.id} status is ${s.status}, expected 'ready'`);
+        }
+      });
+      
+      // Update Redux state with refreshed shipments
+      const updatedShipmentsMap = new Map(refreshedShipments.map(s => [s.id, s]));
+      const refreshedShipmentsList = shipments.map(s => 
+        updatedShipmentsMap.get(s.id) || s
+      );
+      dispatch(setShipments(refreshedShipmentsList));
+
+      // Clear animation after a moment
+      setTimeout(() => {
+        setAnimatingShipments(new Set());
+      }, 600);
+
+      const approvedCount = refreshedShipments.filter(s => s.status === 'ready').length;
+      message.success(`Successfully approved ${approvedCount} shipment${approvedCount > 1 ? 's' : ''}`);
+    } catch (error: any) {
+      console.error('Error approving shipments:', error);
+      message.error(error.response?.data?.error || 'Failed to approve some shipments');
+      setAnimatingShipments(new Set());
     }
   };
 
-  // Get status tag - Simple 3-status system using Ant Design colors (clickable)
+  // Get status tag - Simple 3-status system using Ant Design colors (not clickable anymore)
   const getStatusTag = (status: string, shipment: Shipment) => {
     const smallTagStyle = { 
       fontSize: '11px', 
@@ -350,10 +419,9 @@ const Step2Review: React.FC = () => {
     
     const tagProps: any = {
       style: { 
-        cursor: status !== 'invalid' ? 'pointer' : 'default',
+        cursor: 'default', // No longer clickable
         ...smallTagStyle
       },
-      onClick: status !== 'invalid' ? () => handleStatusToggle(shipment) : undefined,
     };
 
     switch (status) {
@@ -458,6 +526,70 @@ const Step2Review: React.FC = () => {
     { value: 'invalid', label: 'Invalid' },
   ];
 
+  // Helper function to check if shipment has a specific validation issue
+  const hasValidationIssue = (shipment: Shipment, issue: string): boolean => {
+    const flags = shipment.validation_flags || [];
+    
+    // Map filter issue names to actual validation flags
+    const issueMap: Record<string, string[]> = {
+      'order_number_auto_generated': ['order_number_auto_generated'],
+      'missing_order_number': ['missing_order_number', 'order_number_auto_generated'],
+      'missing_sender_address': ['missing_sender_address'],
+      'missing_recipient_address': ['missing_recipient_address', 'missing_recipient_address_line'],
+      'missing_package_details': ['missing_package_details', 'auto_assigned_package'],
+      'missing_pincode': ['missing_pincode'],
+      'missing_weight': ['missing_weight'],
+      'missing_dimensions': ['missing_dimensions'],
+    };
+    
+    const relatedFlags = issueMap[issue] || [issue];
+    return relatedFlags.some(flag => flags.includes(flag));
+  };
+
+  // Calculate counts for each validation issue
+  const getValidationCounts = () => {
+    return {
+      autoFilledOrderNumber: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('order_number_auto_generated');
+      }).length,
+      missingOrderNumber: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return !s.order_number || 
+               flags.includes('missing_order_number') || 
+               flags.includes('order_number_auto_generated');
+      }).length,
+      missingAddressFrom: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('missing_sender_address');
+      }).length,
+      missingAddressTo: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('missing_recipient_address') || 
+               flags.includes('missing_recipient_address_line');
+      }).length,
+      missingPackageDetails: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('missing_package_details') || 
+               flags.includes('auto_assigned_package');
+      }).length,
+      missingPincode: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('missing_pincode');
+      }).length,
+      missingWeight: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('missing_weight');
+      }).length,
+      missingDimensions: shipments.filter(s => {
+        const flags = s.validation_flags || [];
+        return flags.includes('missing_dimensions');
+      }).length,
+    };
+  };
+
+  const validationCounts = getValidationCounts();
+
   const filteredShipments = shipments.filter(shipment => {
     // Search text filter
     const searchLower = searchText.toLowerCase();
@@ -488,7 +620,13 @@ const Step2Review: React.FC = () => {
     const matchesOrderNumber = !filters.orderNumber || 
       shipment.order_number?.toLowerCase().includes(filters.orderNumber.toLowerCase());
 
-    return matchesSearch && matchesStatus && matchesFromAddress && matchesToAddress && matchesPackage && matchesOrderNumber;
+    // Validation issue filter
+    let matchesValidationIssue = true;
+    if (filters.validationIssue) {
+      matchesValidationIssue = hasValidationIssue(shipment, filters.validationIssue);
+    }
+
+    return matchesSearch && matchesStatus && matchesFromAddress && matchesToAddress && matchesPackage && matchesOrderNumber && matchesValidationIssue;
   });
 
   const columns: ColumnsType<Shipment> = [
@@ -567,14 +705,57 @@ const Step2Review: React.FC = () => {
       },
       sortDirections: ['ascend', 'descend'],
       showSorterTooltip: false,
-      render: (text) => text || '-',
+      render: (text, record) => {
+        const flags = record.validation_flags || [];
+        const isAutoGenerated = flags.includes('order_number_auto_generated');
+        const isExtracted = flags.includes('order_number_extracted_from_address2');
+        
+        if (!text) return '-';
+        
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>{text}</span>
+            {isAutoGenerated && (
+              <Tag color="blue" style={{ fontSize: '10px', padding: '0 4px', margin: 0 }}>
+                Auto
+              </Tag>
+            )}
+            {isExtracted && (
+              <Tag color="green" style={{ fontSize: '10px', padding: '0 4px', margin: 0 }}>
+                Extracted
+              </Tag>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Actions',
-      width: 80,
+      width: 150,
       fixed: 'right',
       align: 'center',
       render: (_, record) => {
+        const isApproved = record.status === 'ready';
+        const isAnimating = animatingShipments.has(record.id);
+
+        const handleApproveClick = async () => {
+          if (isApproved) return;
+          
+          // Start animation
+          setAnimatingShipments(prev => new Set(prev).add(record.id));
+          
+          await handleApprove(record);
+          
+          // Keep animation visible for a moment, then remove
+          setTimeout(() => {
+            setAnimatingShipments(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(record.id);
+              return newSet;
+            });
+          }, 600);
+        };
+
         const menuItems: MenuProps['items'] = [
           {
             key: 'edit-address',
@@ -616,45 +797,80 @@ const Step2Review: React.FC = () => {
         );
 
         return (
-          <Dropdown
-            menu={{ items: menuItems }}
-            trigger={['click']}
-            placement="bottomRight"
-            overlayStyle={{ minWidth: '220px' }}
-            overlayClassName="action-dropdown"
-          >
+          <Space size="small">
+            {/* Approve/Approved Button */}
             <Button
-              type="text"
-              icon={<HorizontalDotsIcon />}
+              type={isApproved ? 'default' : 'default'}
               size="small"
+              onClick={handleApproveClick}
+              disabled={isApproved}
+              className={isAnimating ? 'approve-button-animating' : isApproved ? 'approve-button-approved' : ''}
               style={{
-                fontSize: '20px',
-                color: theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959',
-                padding: '6px 12px',
-                minWidth: '48px',
-                height: '48px',
-                display: 'flex',
+                backgroundColor: isApproved ? '#52c41a' : 'transparent',
+                borderColor: isApproved ? '#52c41a' : '#d9d9d9',
+                color: isApproved ? '#fff' : (theme === 'dark' ? '#fff' : '#262626'),
+                fontWeight: 500,
+                minWidth: isApproved ? '95px' : '85px',
+                height: '32px',
+                display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderRadius: '6px',
-                transition: 'all 0.2s',
-                cursor: 'pointer',
-                border: '1px solid transparent',
+                gap: '6px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: isApproved ? '0 2px 4px rgba(82, 196, 26, 0.2)' : 'none',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#262626' : '#f5f5f5';
-                e.currentTarget.style.color = theme === 'dark' ? '#fff' : '#262626';
-                e.currentTarget.style.borderColor = '#d9d9d9';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959';
-                e.currentTarget.style.borderColor = 'transparent';
-              }}
-              onClick={(e) => e.stopPropagation()}
-              aria-label="More actions"
-            />
-          </Dropdown>
+            >
+              {isApproved ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <CheckOutlined style={{ fontSize: '14px' }} />
+                  Approved
+                </span>
+              ) : (
+                'Approve'
+              )}
+            </Button>
+
+            {/* More Actions Dropdown */}
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={['click']}
+              placement="bottomRight"
+              overlayStyle={{ minWidth: '220px' }}
+              overlayClassName="action-dropdown"
+            >
+              <Button
+                type="text"
+                icon={<HorizontalDotsIcon />}
+                size="small"
+                style={{
+                  fontSize: '20px',
+                  color: theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959',
+                  padding: '6px 12px',
+                  minWidth: '48px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '6px',
+                  transition: 'all 0.2s',
+                  cursor: 'pointer',
+                  border: '1px solid transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#262626' : '#f5f5f5';
+                  e.currentTarget.style.color = theme === 'dark' ? '#fff' : '#262626';
+                  e.currentTarget.style.borderColor = '#d9d9d9';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959';
+                  e.currentTarget.style.borderColor = 'transparent';
+                }}
+                onClick={(e) => e.stopPropagation()}
+                aria-label="More actions"
+              />
+            </Dropdown>
+          </Space>
         );
       },
     },
@@ -662,9 +878,28 @@ const Step2Review: React.FC = () => {
 
   const rowSelection = {
     selectedRowKeys: selectedShipments,
-    onChange: (selectedKeys: React.Key[]) => {
+    onChange: (selectedKeys: React.Key[], selectedRows: Shipment[]) => {
+      // Update selection with the new keys
       dispatch(setSelectedShipments(selectedKeys as number[]));
     },
+    onSelectAll: (selected: boolean, selectedRows: Shipment[], changeRows: Shipment[]) => {
+      if (selected) {
+        // Select all visible rows (filtered shipments)
+        const allIds = filteredShipments.map(s => s.id);
+        // Merge with existing selections to preserve selections from other pages
+        const newSelection = Array.from(new Set([...selectedShipments, ...allIds]));
+        dispatch(setSelectedShipments(newSelection));
+      } else {
+        // Deselect all visible rows (but keep selections from other pages)
+        const visibleIds = filteredShipments.map(s => s.id);
+        const newSelection = selectedShipments.filter(id => !visibleIds.includes(id));
+        dispatch(setSelectedShipments(newSelection));
+      }
+    },
+    getCheckboxProps: (record: Shipment) => ({
+      name: `shipment-${record.id}`,
+    }),
+    preserveSelectedRowKeys: true, // Preserve selection across pagination
   };
 
   const hasSelected = selectedShipments.length > 0;
@@ -706,7 +941,10 @@ const Step2Review: React.FC = () => {
                 style={{ display: 'flex', alignItems: 'center', gap: 4 }}
               >
                 Filter
-                {Object.keys(filters).filter(key => filters[key as keyof typeof filters]).length > 0 && (
+                {Object.keys(filters).filter(key => {
+                  const value = filters[key as keyof typeof filters];
+                  return value !== undefined && value !== null && value !== '';
+                }).length > 0 && (
                   <span style={{ 
                     marginLeft: 4, 
                     backgroundColor: '#1890ff', 
@@ -720,7 +958,10 @@ const Step2Review: React.FC = () => {
                     fontSize: '11px',
                     fontWeight: 'bold'
                   }}>
-                    {Object.keys(filters).filter(key => filters[key as keyof typeof filters]).length}
+                    {Object.keys(filters).filter(key => {
+                      const value = filters[key as keyof typeof filters];
+                      return value !== undefined && value !== null && value !== '';
+                    }).length}
                   </span>
                 )}
               </Button>
@@ -765,6 +1006,159 @@ const Step2Review: React.FC = () => {
             </Space>
           </div>
 
+          {/* Validation Indicators */}
+          <div style={{ 
+            marginBottom: 16, 
+            padding: '12px 16px', 
+            background: theme === 'dark' ? '#1f1f1f' : '#fafafa',
+            border: `1px solid ${theme === 'dark' ? '#303030' : '#f0f0f0'}`,
+            borderRadius: '6px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 8
+          }}>
+            <span style={{ 
+              marginRight: 8, 
+              fontWeight: 500, 
+              color: theme === 'dark' ? '#fff' : '#262626',
+              alignSelf: 'center'
+            }}>
+              Validation Issues:
+            </span>
+            {validationCounts.autoFilledOrderNumber > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'order_number_auto_generated' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'order_number_auto_generated') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'order_number_auto_generated' });
+                  }
+                }}
+                style={{
+                  borderColor: filters.validationIssue === 'order_number_auto_generated' ? undefined : '#1890ff',
+                  color: filters.validationIssue === 'order_number_auto_generated' ? undefined : '#1890ff',
+                }}
+              >
+                Auto-Filled Order ID ({validationCounts.autoFilledOrderNumber})
+              </Button>
+            )}
+            {validationCounts.missingOrderNumber > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_order_number' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_order_number') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_order_number' });
+                  }
+                }}
+              >
+                Missing Order ID ({validationCounts.missingOrderNumber})
+              </Button>
+            )}
+            {validationCounts.missingAddressFrom > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_sender_address' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_sender_address') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_sender_address' });
+                  }
+                }}
+              >
+                Missing Address From ({validationCounts.missingAddressFrom})
+              </Button>
+            )}
+            {validationCounts.missingAddressTo > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_recipient_address' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_recipient_address') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_recipient_address' });
+                  }
+                }}
+              >
+                Missing Address To ({validationCounts.missingAddressTo})
+              </Button>
+            )}
+            {validationCounts.missingPackageDetails > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_package_details' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_package_details') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_package_details' });
+                  }
+                }}
+              >
+                Missing Package Details ({validationCounts.missingPackageDetails})
+              </Button>
+            )}
+            {validationCounts.missingPincode > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_pincode' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_pincode') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_pincode' });
+                  }
+                }}
+              >
+                Missing Pincode ({validationCounts.missingPincode})
+              </Button>
+            )}
+            {validationCounts.missingWeight > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_weight' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_weight') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_weight' });
+                  }
+                }}
+              >
+                Missing Weight ({validationCounts.missingWeight})
+              </Button>
+            )}
+            {validationCounts.missingDimensions > 0 && (
+              <Button
+                size="small"
+                type={filters.validationIssue === 'missing_dimensions' ? 'primary' : 'default'}
+                onClick={() => {
+                  if (filters.validationIssue === 'missing_dimensions') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'missing_dimensions' });
+                  }
+                }}
+              >
+                Missing Dimensions ({validationCounts.missingDimensions})
+              </Button>
+            )}
+            {Object.values(validationCounts).every(count => count === 0) && (
+              <span style={{ 
+                color: theme === 'dark' ? '#8c8c8c' : '#8c8c8c',
+                fontStyle: 'italic'
+              }}>
+                No validation issues found
+              </span>
+            )}
+          </div>
+
           {/* Bulk Actions Toolbar */}
           {hasSelected && (
             <div style={{ 
@@ -778,6 +1172,15 @@ const Step2Review: React.FC = () => {
                 <span style={{ marginRight: 8, fontWeight: 500 }}>
                   Selected {selectedShipments.length} item{selectedShipments.length > 1 ? 's' : ''}
                 </span>
+                <Button 
+                  size="small"
+                  type="primary"
+                  icon={<CheckOutlined />}
+                  onClick={handleApproveAll}
+                  className={`approve-all-button ${animatingShipments.size > 0 ? 'approve-all-button-animating' : ''}`}
+                >
+                  Approve All
+                </Button>
                 <Button 
                   size="small"
                   onClick={() => setBulkActionModal('address')}
@@ -1186,6 +1589,9 @@ const Step2Review: React.FC = () => {
         
         .ant-checkbox-checked .ant-checkbox-inner::after {
           border-color: #fff !important;
+          opacity: 1 !important;
+          display: block !important;
+          visibility: visible !important;
         }
         
         .ant-table-selection-column .ant-checkbox-inner {
@@ -1195,6 +1601,31 @@ const Step2Review: React.FC = () => {
         
         .ant-table-selection-column .ant-checkbox:hover .ant-checkbox-inner {
           border-color: #1890ff !important;
+        }
+        
+        .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner {
+          border-color: #1890ff !important;
+          background-color: #1890ff !important;
+        }
+        
+        .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner::after {
+          border-color: #fff !important;
+          opacity: 1 !important;
+          display: block !important;
+          visibility: visible !important;
+        }
+        
+        /* Ensure checkbox tick mark is properly visible */
+        .ant-checkbox-checked .ant-checkbox-inner::after,
+        .ant-table-selection-column .ant-checkbox-checked .ant-checkbox-inner::after {
+          width: 5.71428571px !important;
+          height: 9.14285714px !important;
+          top: 50% !important;
+          left: 22% !important;
+          border: 2px solid #fff !important;
+          border-top: 0 !important;
+          border-left: 0 !important;
+          transform: rotate(45deg) scale(1) translate(-50%, -50%) !important;
         }
         
         /* Dropdown arrow visibility */
@@ -1284,9 +1715,25 @@ const Step2Review: React.FC = () => {
           pointer-events: auto;
         }
         
-        /* Also re-enable for checkbox column */
-        .ant-table-thead > tr > th.ant-table-selection-column {
-          pointer-events: auto;
+        /* Re-enable for checkbox column - both header and body */
+        .ant-table-thead > tr > th.ant-table-selection-column,
+        .ant-table-tbody > tr > td.ant-table-selection-column {
+          pointer-events: auto !important;
+        }
+        
+        /* Ensure checkboxes are clickable and visible */
+        .ant-table-selection-column .ant-checkbox-wrapper,
+        .ant-table-selection-column .ant-checkbox,
+        .ant-table-selection-column .ant-checkbox-inner {
+          pointer-events: auto !important;
+          cursor: pointer !important;
+          z-index: 1;
+        }
+        
+        /* Ensure checkbox input is also clickable */
+        .ant-table-selection-column .ant-checkbox-input {
+          pointer-events: auto !important;
+          cursor: pointer !important;
         }
         
         .ant-table-tbody > tr > td {
@@ -1375,6 +1822,115 @@ const Step2Review: React.FC = () => {
 
         .action-dropdown .ant-dropdown-menu-item-divider {
           margin: 4px 0;
+        }
+        
+        /* Approve button animation */
+        @keyframes approvePulse {
+          0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(82, 196, 26, 0.7);
+          }
+          30% {
+            transform: scale(1.08);
+            box-shadow: 0 0 0 6px rgba(82, 196, 26, 0.4);
+          }
+          60% {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 10px rgba(82, 196, 26, 0);
+          }
+          100% {
+            transform: scale(1);
+            box-shadow: 0 2px 4px rgba(82, 196, 26, 0.2);
+          }
+        }
+        
+        @keyframes approveSuccess {
+          0% {
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+          50% {
+            transform: scale(1.15) rotate(5deg);
+            opacity: 0.95;
+          }
+          100% {
+            transform: scale(1) rotate(0deg);
+            opacity: 1;
+          }
+        }
+        
+        .approve-button-animating {
+          animation: approvePulse 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        
+        .approve-button-approved {
+          position: relative;
+        }
+        
+        .approve-button-approved::before {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 0;
+          height: 0;
+          border-radius: 50%;
+          background: rgba(82, 196, 26, 0.3);
+          transform: translate(-50%, -50%);
+          animation: approveRipple 0.6s ease-out;
+        }
+        
+        @keyframes approveRipple {
+          0% {
+            width: 0;
+            height: 0;
+            opacity: 1;
+          }
+          100% {
+            width: 100px;
+            height: 100px;
+            opacity: 0;
+          }
+        }
+        
+        /* Hover effect for approve button */
+        .ant-btn:not(:disabled):hover:not(.approve-button-approved) {
+          border-color: #52c41a !important;
+          color: #52c41a !important;
+        }
+        
+        /* Approve All button styling */
+        .approve-all-button {
+          background-color: #52c41a !important;
+          border-color: #52c41a !important;
+          color: #fff !important;
+        }
+        
+        .approve-all-button:hover,
+        .approve-all-button:focus {
+          background-color: #73d13d !important;
+          border-color: #73d13d !important;
+          color: #fff !important;
+        }
+        
+        .approve-all-button:active {
+          background-color: #389e0d !important;
+          border-color: #389e0d !important;
+          color: #fff !important;
+        }
+        
+        .approve-all-button .anticon {
+          color: #fff !important;
+        }
+        
+        .approve-all-button:hover .anticon,
+        .approve-all-button:focus .anticon {
+          color: #fff !important;
+        }
+        
+        /* Approve All button animation */
+        .approve-all-button-animating {
+          animation: approvePulse 0.6s cubic-bezier(0.4, 0, 0.2, 1) !important;
         }
       `}</style>
     </div>

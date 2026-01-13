@@ -17,12 +17,13 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from shipping_app.views import ShipmentViewSet, SavedAddressViewSet, SavedPackageViewSet
+from shipping_app.views import ShipmentViewSet, SavedAddressViewSet, SavedPackageViewSet, OrderNumberSettingsViewSet
 
 router = DefaultRouter()
 router.register(r'shipments', ShipmentViewSet, basename='shipment')
 router.register(r'saved-addresses', SavedAddressViewSet, basename='saved-address')
 router.register(r'saved-packages', SavedPackageViewSet, basename='saved-package')
+router.register(r'order-number-settings', OrderNumberSettingsViewSet, basename='order-number-settings')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
