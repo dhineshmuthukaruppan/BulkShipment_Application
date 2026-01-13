@@ -32,6 +32,14 @@ export interface Shipment {
   shipping_provider: string;
   shipping_service: string;
   shipping_cost: number | null;
+  dimensional_weight?: number | null;
+  billable_weight?: number | null;
+  weight_type?: 'actual' | 'dimensional' | null;
+  shipping_zone?: number | null;
+  is_intrastate?: boolean;
+  zone_type?: 'intrastate' | 'interstate' | null;
+  weight_calculation_breakdown?: string;
+  zone_info?: string;
   address_validated: boolean;
   address_validation_api_used: string;
   address_corrections: string[];
@@ -77,3 +85,51 @@ export interface ShippingService {
   formatted_price: string;
 }
 
+export interface ZoneRate {
+  base_price: string;
+  per_oz_rate: string;
+}
+
+export interface ServiceRates {
+  zones: {
+    [zone: number]: ZoneRate;
+  };
+  zone_type?: 'intrastate' | 'interstate';
+}
+
+export interface ProviderRates {
+  [serviceName: string]: ServiceRates;
+}
+
+export interface TariffChartData {
+  providers: {
+    USPS?: ProviderRates;
+    UPS?: ProviderRates;
+    FedEx?: ProviderRates;
+  };
+  zone_info: {
+    intrastate_zones: number[];
+    interstate_zones: number[];
+  };
+}
+
+export interface CostBreakdown {
+  actual_weight_lbs: number;
+  actual_weight_oz: number;
+  dimensional_weight_lbs?: number | null;
+  billable_weight_lbs: number;
+  billable_weight_oz: number;
+  weight_type: 'actual' | 'dimensional';
+  shipping_zone: number;
+  zone_type: 'intrastate' | 'interstate';
+  provider: string;
+  service: string;
+  base_price: string;
+  per_oz_rate: string;
+  calculation: {
+    base_price: number;
+    weight_oz: number;
+    weight_cost: number;
+    total: number;
+  };
+}

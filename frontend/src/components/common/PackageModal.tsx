@@ -1,6 +1,9 @@
 import React, { useEffect } from 'react';
-import { Modal, Form, Input, InputNumber } from 'antd';
+import { Modal, Form, Input, InputNumber, Typography, Tag, Divider, Space } from 'antd';
 import { Shipment } from '../../types/shipment';
+import { useTheme } from '../../contexts/ThemeContext';
+
+const { Text } = Typography;
 
 interface PackageModalProps {
   visible: boolean;
@@ -15,6 +18,7 @@ const PackageModal: React.FC<PackageModalProps> = ({
   onOk,
   initialValues,
 }) => {
+  const { theme } = useTheme();
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -29,6 +33,7 @@ const PackageModal: React.FC<PackageModalProps> = ({
       });
     }
   }, [visible, initialValues, form]);
+
 
   const handleSubmit = () => {
     form.validateFields().then((values) => {
@@ -172,6 +177,80 @@ const PackageModal: React.FC<PackageModalProps> = ({
             </Form.Item>
           </Input.Group>
         </Form.Item>
+
+        {/* Weight Calculation Breakdown */}
+        {(initialValues?.dimensional_weight || initialValues?.billable_weight) && (
+          <>
+            <Divider style={{ margin: '16px 0' }} />
+            <div style={{ 
+              padding: '12px', 
+              background: theme === 'dark' ? '#1f1f1f' : '#f5f5f5', 
+              borderRadius: '4px',
+              marginBottom: '16px'
+            }}>
+              <Text strong style={{ fontSize: '13px', marginBottom: '8px', display: 'block' }}>
+                Weight Calculation
+              </Text>
+              <Space direction="vertical" size="small" style={{ width: '100%', fontSize: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Text>Actual Weight:</Text>
+                  <Text>
+                    {initialValues?.weight_lbs || form.getFieldValue('weight_lbs') || 0} lbs{' '}
+                    {initialValues?.weight_oz || form.getFieldValue('weight_oz') || 0} oz
+                  </Text>
+                </div>
+                {initialValues?.dimensional_weight && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Text>Dimensional Weight:</Text>
+                    <Text>
+                      {initialValues.dimensional_weight.toFixed(2)} lbs
+                      <Text type="secondary" style={{ fontSize: '11px', marginLeft: '4px' }}>
+                        (Volume ÷ 166)
+                      </Text>
+                    </Text>
+                  </div>
+                )}
+                {initialValues?.billable_weight && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                    <Text strong>Billable Weight:</Text>
+                    <Space>
+                      <Text strong style={{ color: '#1890ff' }}>
+                        {initialValues.billable_weight.toFixed(2)} lbs
+                      </Text>
+                      {initialValues?.weight_type && (
+                        <Tag color={initialValues.weight_type === 'dimensional' ? 'orange' : 'blue'}>
+                          {initialValues.weight_type === 'dimensional' ? 'Dimensional' : 'Actual'}
+                        </Tag>
+                      )}
+                    </Space>
+                  </div>
+                )}
+              </Space>
+            </div>
+          </>
+        )}
+
+        {/* Zone Information */}
+        {initialValues?.shipping_zone && (
+          <>
+            <Divider style={{ margin: '16px 0' }} />
+            <div style={{ 
+              padding: '12px', 
+              background: theme === 'dark' ? '#1f1f1f' : '#f5f5f5', 
+              borderRadius: '4px'
+            }}>
+              <Text strong style={{ fontSize: '13px', marginBottom: '8px', display: 'block' }}>
+                Shipping Zone
+              </Text>
+              <Space>
+                <Text>Zone {initialValues.shipping_zone}</Text>
+                <Tag color={initialValues.zone_type === 'intrastate' ? 'blue' : 'orange'}>
+                  {initialValues.zone_type === 'intrastate' ? 'Intrastate' : 'Interstate'}
+                </Tag>
+              </Space>
+            </div>
+          </>
+        )}
       </Form>
     </Modal>
   );
