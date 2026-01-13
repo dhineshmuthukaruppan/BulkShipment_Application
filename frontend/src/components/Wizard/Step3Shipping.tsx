@@ -39,30 +39,20 @@ import CostBreakdownModal from '../common/CostBreakdownModal';
 
 const { Title, Text } = Typography;
 
-// Shipping providers and their services
+// Shipping providers
 const SHIPPING_PROVIDERS = [
   { value: 'USPS', label: 'USPS' },
   { value: 'FedEx', label: 'FedEx' },
   { value: 'UPS', label: 'UPS' },
 ];
 
-const SHIPPING_SERVICES: Record<string, Array<{ value: string; label: string; priceRange: string }>> = {
-  USPS: [
-    { value: 'Priority Mail', label: 'Priority Mail', priceRange: '$4.00 - $8.00' },
-    { value: 'Ground Shipping', label: 'Ground Shipping', priceRange: '$2.00 - $5.00' },
-    { value: 'First Class', label: 'First Class', priceRange: '$3.00 - $6.00' },
-  ],
-  FedEx: [
-    { value: 'FedEx Ground', label: 'FedEx Ground', priceRange: '$5.00 - $10.00' },
-    { value: 'FedEx Express', label: 'FedEx Express', priceRange: '$15.00 - $25.00' },
-    { value: 'FedEx Overnight', label: 'FedEx Overnight', priceRange: '$25.00 - $40.00' },
-  ],
-  UPS: [
-    { value: 'UPS Ground', label: 'UPS Ground', priceRange: '$5.00 - $10.00' },
-    { value: 'UPS Next Day Air', label: 'UPS Next Day Air', priceRange: '$20.00 - $35.00' },
-    { value: 'UPS 2nd Day Air', label: 'UPS 2nd Day Air', priceRange: '$12.00 - $20.00' },
-  ],
-};
+// Unified service options for all providers (tariffs vary by provider)
+// Price is calculated dynamically based on weight, zone, and provider
+// No static price ranges needed - actual cost shown in Cost column
+const SHIPPING_SERVICES = [
+  { value: 'Priority Mail', label: 'Priority Mail', description: 'Faster delivery' },
+  { value: 'Ground Shipping', label: 'Ground Shipping', description: 'Economy option' },
+];
 
 const Step3Shipping: React.FC = () => {
   const { theme } = useTheme();
@@ -84,8 +74,8 @@ const Step3Shipping: React.FC = () => {
 
   const handleProviderChange = async (shipmentId: number, provider: string) => {
     try {
-      // When provider changes, reset to first service of that provider
-      const firstService = SHIPPING_SERVICES[provider]?.[0]?.value || 'Ground Shipping';
+      // When provider changes, reset to first service (Ground Shipping is typically cheaper)
+      const firstService = SHIPPING_SERVICES[0]?.value || 'Ground Shipping';
       await shipmentService.bulkUpdate([shipmentId], { 
         shipping_provider: provider,
         shipping_service: firstService 
@@ -155,7 +145,7 @@ const Step3Shipping: React.FC = () => {
     }
     
     try {
-      const firstService = SHIPPING_SERVICES[selectedProvider]?.[0]?.value || 'Ground Shipping';
+      const firstService = SHIPPING_SERVICES[0]?.value || 'Ground Shipping';
       await shipmentService.bulkUpdate(selectedShipments, { 
         shipping_provider: selectedProvider,
         shipping_service: firstService 
@@ -242,13 +232,13 @@ const Step3Shipping: React.FC = () => {
   };
 
   const getServicesForProvider = (provider: string) => {
-    return SHIPPING_SERVICES[provider] || SHIPPING_SERVICES['USPS'];
+    // All providers use the same services (tariffs vary by provider)
+    return SHIPPING_SERVICES;
   };
 
-  const getMostAffordableService = (provider: string) => {
-    const services = getServicesForProvider(provider);
-    // Return the first service (they should be sorted by price)
-    return services[0]?.value || 'Ground Shipping';
+  const getMostAffordableService = () => {
+    // Ground Shipping is typically the most affordable option
+    return 'Ground Shipping';
   };
 
   const columns: ColumnsType<Shipment> = [
@@ -288,15 +278,14 @@ const Step3Shipping: React.FC = () => {
       title: 'Shipping Service',
       width: 200,
       render: (_, record) => {
-        const provider = record.shipping_provider || 'USPS';
-        const services = getServicesForProvider(provider);
+        const services = getServicesForProvider(record.shipping_provider || 'USPS');
         return (
           <Select
             value={record.shipping_service}
             style={{ width: '100%' }}
             onChange={(value) => handleServiceChange(record.id, value)}
             options={services.map(s => ({
-              label: `${s.label} (${s.priceRange})`,
+              label: s.label,
               value: s.value,
             }))}
           />
@@ -541,16 +530,14 @@ const Step3Shipping: React.FC = () => {
             (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
           }
           options={(() => {
-            const selectedShipmentData = shipments.filter(s => selectedShipments.includes(s.id));
-            const mostCommonProvider = selectedShipmentData[0]?.shipping_provider || 'USPS';
-            const services = getServicesForProvider(mostCommonProvider);
+            const services = getServicesForProvider('USPS'); // All providers have same services
             return [
               { 
                 label: 'Switch to the most affordable rate available', 
-                value: getMostAffordableService(mostCommonProvider) 
+                value: getMostAffordableService() 
               },
               ...services.map(s => ({
-                label: `${s.label} (${s.priceRange})`,
+                label: s.label,
                 value: s.value,
               }))
             ];
