@@ -151,7 +151,6 @@ class Shipment(models.Model):
         if self.from_city and self.from_state:
             parts.append(f"{self.from_city}, {self.from_state} {self.from_zip}".strip())
         return "\n".join(parts) if parts else "No sender address"
-
     def get_formatted_to_address(self):
         """Format the to address for display"""
         parts = []
