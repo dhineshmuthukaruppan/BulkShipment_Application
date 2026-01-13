@@ -233,12 +233,33 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                         process_date=process_date,  # Set process date for dashboard analytics
                     )
                     
-                    # Calculate shipping cost
-                    shipment.shipping_cost = calculator.calculate(
-                        shipment.weight_lbs,
-                        shipment.weight_oz,
-                        shipment.shipping_service
+                    # Calculate shipping cost with zone-based rates and volumetric weight
+                    result = calculator.calculate(
+                        weight_lbs=shipment.weight_lbs,
+                        weight_oz=shipment.weight_oz,
+                        length=shipment.length,
+                        width=shipment.width,
+                        height=shipment.height,
+                        provider=shipment.shipping_provider or 'USPS',
+                        service=shipment.shipping_service,
+                        origin_zip=shipment.from_zip,
+                        origin_state=shipment.from_state,
+                        destination_zip=shipment.to_zip,
+                        destination_state=shipment.to_state
                     )
+                    
+                    # Update shipment with calculated values
+                    shipment.shipping_cost = result['cost']
+                    breakdown = result['breakdown']
+                    shipment.dimensional_weight = Decimal(str(breakdown['dimensional_weight_lbs'])) if breakdown['dimensional_weight_lbs'] else None
+                    shipment.billable_weight = Decimal(str(breakdown['billable_weight_lbs']))
+                    shipment.weight_type = breakdown['weight_type']
+                    shipment.shipping_zone = breakdown['shipping_zone']
+                    shipment.zone_type = breakdown['zone_type']
+                    shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
+                    
+                    # Skip auto-calculation since we're setting values explicitly
+                    shipment._skip_weight_calculation = True
                     # Status will be auto-calculated by model's save() method
                     shipment.save()
                     
@@ -332,11 +353,32 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     shipment.height = package.height
                     shipment.weight_lbs = package.weight_lbs
                     shipment.weight_oz = package.weight_oz
-                    shipment.shipping_cost = calculator.calculate(
-                        shipment.weight_lbs,
-                        shipment.weight_oz,
-                        shipment.shipping_service
+                    
+                    # Calculate shipping cost with zone-based rates and volumetric weight
+                    result = calculator.calculate(
+                        weight_lbs=shipment.weight_lbs,
+                        weight_oz=shipment.weight_oz,
+                        length=shipment.length,
+                        width=shipment.width,
+                        height=shipment.height,
+                        provider=shipment.shipping_provider or 'USPS',
+                        service=shipment.shipping_service,
+                        origin_zip=shipment.from_zip,
+                        origin_state=shipment.from_state,
+                        destination_zip=shipment.to_zip,
+                        destination_state=shipment.to_state
                     )
+                    
+                    # Update shipment with calculated values
+                    shipment.shipping_cost = result['cost']
+                    breakdown = result['breakdown']
+                    shipment.dimensional_weight = Decimal(str(breakdown['dimensional_weight_lbs'])) if breakdown['dimensional_weight_lbs'] else None
+                    shipment.billable_weight = Decimal(str(breakdown['billable_weight_lbs']))
+                    shipment.weight_type = breakdown['weight_type']
+                    shipment.shipping_zone = breakdown['shipping_zone']
+                    shipment.zone_type = breakdown['zone_type']
+                    shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
+                    
                     # Mark package as reviewed
                     validation_flags = list(shipment.validation_flags or [])
                     if 'package_reviewed' not in validation_flags:
@@ -347,6 +389,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                         if flag in validation_flags:
                             validation_flags.remove(flag)
                     shipment.validation_flags = validation_flags
+                    shipment._skip_weight_calculation = True
                     shipment.save()  # Persists to database - status will be auto-calculated
                 updated_count = shipments.count()
                 ShippingLogger().log_bulk_action(
@@ -365,11 +408,32 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     shipment.shipping_provider = provider
                     if service:
                         shipment.shipping_service = service
-                    shipment.shipping_cost = calculator.calculate(
-                        shipment.weight_lbs,
-                        shipment.weight_oz,
-                        shipment.shipping_service
+                    
+                    # Calculate shipping cost with zone-based rates and volumetric weight
+                    result = calculator.calculate(
+                        weight_lbs=shipment.weight_lbs,
+                        weight_oz=shipment.weight_oz,
+                        length=shipment.length,
+                        width=shipment.width,
+                        height=shipment.height,
+                        provider=provider,
+                        service=shipment.shipping_service,
+                        origin_zip=shipment.from_zip,
+                        origin_state=shipment.from_state,
+                        destination_zip=shipment.to_zip,
+                        destination_state=shipment.to_state
                     )
+                    
+                    # Update shipment with calculated values
+                    shipment.shipping_cost = result['cost']
+                    breakdown = result['breakdown']
+                    shipment.dimensional_weight = Decimal(str(breakdown['dimensional_weight_lbs'])) if breakdown['dimensional_weight_lbs'] else None
+                    shipment.billable_weight = Decimal(str(breakdown['billable_weight_lbs']))
+                    shipment.weight_type = breakdown['weight_type']
+                    shipment.shipping_zone = breakdown['shipping_zone']
+                    shipment.zone_type = breakdown['zone_type']
+                    shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
+                    shipment._skip_weight_calculation = True
                     shipment.save()  # Persists to database - status will be auto-calculated
                 updated_count = shipments.count()
                 ShippingLogger().log_bulk_action(
@@ -384,11 +448,32 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 service = updates['shipping_service']
                 for shipment in shipments:
                     shipment.shipping_service = service
-                    shipment.shipping_cost = calculator.calculate(
-                        shipment.weight_lbs,
-                        shipment.weight_oz,
-                        service
+                    
+                    # Calculate shipping cost with zone-based rates and volumetric weight
+                    result = calculator.calculate(
+                        weight_lbs=shipment.weight_lbs,
+                        weight_oz=shipment.weight_oz,
+                        length=shipment.length,
+                        width=shipment.width,
+                        height=shipment.height,
+                        provider=shipment.shipping_provider or 'USPS',
+                        service=service,
+                        origin_zip=shipment.from_zip,
+                        origin_state=shipment.from_state,
+                        destination_zip=shipment.to_zip,
+                        destination_state=shipment.to_state
                     )
+                    
+                    # Update shipment with calculated values
+                    shipment.shipping_cost = result['cost']
+                    breakdown = result['breakdown']
+                    shipment.dimensional_weight = Decimal(str(breakdown['dimensional_weight_lbs'])) if breakdown['dimensional_weight_lbs'] else None
+                    shipment.billable_weight = Decimal(str(breakdown['billable_weight_lbs']))
+                    shipment.weight_type = breakdown['weight_type']
+                    shipment.shipping_zone = breakdown['shipping_zone']
+                    shipment.zone_type = breakdown['zone_type']
+                    shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
+                    shipment._skip_weight_calculation = True
                     shipment.save()  # Persists to database - status will be auto-calculated
                 updated_count = shipments.count()
                 ShippingLogger().log_bulk_action(
@@ -437,28 +522,61 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def calculate_shipping(self, request, pk=None):
         """
-        Calculate shipping cost for a shipment.
+        Calculate shipping cost for a shipment with zone-based rates and volumetric weight.
         
         IMPORTANT: Changes are persisted to database via .save()
+        
+        Accepts optional parameters:
+        - service: Shipping service name
+        - provider: Shipping provider (USPS, UPS, FedEx)
         """
         shipment = self.get_object()
         service = request.data.get('service', shipment.shipping_service)
+        provider = request.data.get('provider', shipment.shipping_provider or 'USPS')
         
         calculator = ShippingCalculator()
-        cost = calculator.calculate(shipment.weight_lbs, shipment.weight_oz, service)
+        result = calculator.calculate(
+            weight_lbs=shipment.weight_lbs,
+            weight_oz=shipment.weight_oz,
+            length=shipment.length,
+            width=shipment.width,
+            height=shipment.height,
+            provider=provider,
+            service=service,
+            origin_zip=shipment.from_zip,
+            origin_state=shipment.from_state,
+            destination_zip=shipment.to_zip,
+            destination_state=shipment.to_state
+        )
         
+        cost = result['cost']
+        breakdown = result['breakdown']
+        
+        # Update shipment with calculated values
+        shipment.shipping_provider = provider
         shipment.shipping_service = service
         shipment.shipping_cost = cost
-        shipment.save()  # Persists to database - status will be auto-calculated
+        shipment.dimensional_weight = Decimal(str(breakdown['dimensional_weight_lbs'])) if breakdown['dimensional_weight_lbs'] else None
+        shipment.billable_weight = Decimal(str(breakdown['billable_weight_lbs']))
+        shipment.weight_type = breakdown['weight_type']
+        shipment.shipping_zone = breakdown['shipping_zone']
+        shipment.zone_type = breakdown['zone_type']
+        shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
+        
+        # Skip auto-calculation since we're setting values explicitly
+        shipment._skip_weight_calculation = True
+        shipment.save()  # Persists to database
         
         ShippingLogger().log_shipping_calculation(
-            shipment.id, service, cost, 'standard'
+            shipment.id, service, cost, 'zone_based'
         )
         
         return Response({
             'service': service,
+            'provider': provider,
             'cost': float(cost),
-            'formatted_cost': f"${cost:.2f}"
+            'formatted_cost': f"${cost:.2f}",
+            'breakdown': breakdown
         })
     
     @action(detail=False, methods=['post'])
@@ -516,6 +634,17 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             'label_size': label_size,
             'tracking_numbers': [label.tracking_number for label in labels]
         })
+    
+    @action(detail=False, methods=['get'])
+    def get_tariff_chart(self, request):
+        """
+        Get tariff chart data with zone-based rates for all providers and services
+        
+        Returns structured tariff data for display in tariff chart modal
+        """
+        calculator = ShippingCalculator()
+        tariff_data = calculator.get_tariff_chart()
+        return Response(tariff_data)
 
 
 class SavedAddressViewSet(viewsets.ModelViewSet):

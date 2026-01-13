@@ -13,11 +13,8 @@ import {
   Popconfirm,
   Dropdown,
   MenuProps,
-  Empty,
-  Skeleton,
 } from 'antd';
 import {
-  EditOutlined,
   DeleteOutlined,
   ArrowLeftOutlined,
   ArrowRightOutlined,
@@ -61,7 +58,6 @@ const Step2Review: React.FC = () => {
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [savedPackages, setSavedPackages] = useState<SavedPackage[]>([]);
   const [bulkActionModal, setBulkActionModal] = useState<'address' | 'package' | null>(null);
-  const [loading, setLoading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
   const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -98,7 +94,6 @@ const Step2Review: React.FC = () => {
   const handleSaveEdit = async (values: any) => {
     if (!editingShipment) return;
 
-    setLoading(true);
     try {
       const oldStatus = editingShipment.status;
       const updateData: any = {};
@@ -152,8 +147,6 @@ const Step2Review: React.FC = () => {
       setEditingShipment(null);
     } catch (error) {
       message.error('Failed to update shipment');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -542,17 +535,39 @@ const Step2Review: React.FC = () => {
     {
       title: 'Package Details',
       dataIndex: 'package_details',
-      width: 150,
+      width: 200,
       sorter: (a, b) => {
-        const weightA = (a.weight_lbs || 0) * 16 + (a.weight_oz || 0);
-        const weightB = (b.weight_lbs || 0) * 16 + (b.weight_oz || 0);
+        const weightA = (a.billable_weight || a.weight_lbs || 0) * 16 + (a.weight_oz || 0);
+        const weightB = (b.billable_weight || b.weight_lbs || 0) * 16 + (b.weight_oz || 0);
         return weightA - weightB;
       },
       sortDirections: ['ascend', 'descend'],
       showSorterTooltip: false,
       render: (_, record) => (
-        <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '13px' }}>
-          {formatPackageDetails(record)}
+        <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '12px' }}>
+          <div>{formatPackageDetails(record)}</div>
+          {record.billable_weight && (
+            <div style={{ marginTop: '4px', fontSize: '11px', color: theme === 'dark' ? '#8c8c8c' : '#595959' }}>
+              {record.dimensional_weight && (
+                <div>
+                  Dim: {record.dimensional_weight.toFixed(2)} lbs | 
+                  Billable: {record.billable_weight.toFixed(2)} lbs
+                  {record.weight_type && (
+                    <Tag color={record.weight_type === 'dimensional' ? 'orange' : 'blue'} style={{ marginLeft: '4px', fontSize: '11px' }}>
+                      {record.weight_type}
+                    </Tag>
+                  )}
+                </div>
+              )}
+              {record.shipping_zone && (
+                <div style={{ marginTop: '2px' }}>
+                  <Tag color={record.zone_type === 'intrastate' ? 'blue' : 'orange'} style={{ fontSize: '11px' }}>
+                    Zone {record.shipping_zone} ({record.zone_type || 'intrastate'})
+                  </Tag>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ),
     },

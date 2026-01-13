@@ -1,6 +1,6 @@
 import api from './api';
 import axios from 'axios';
-import { Shipment, SavedAddress, SavedPackage } from '../types/shipment';
+import { Shipment, SavedAddress, SavedPackage, TariffChartData, CostBreakdown } from '../types/shipment';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
@@ -61,9 +61,16 @@ export const shipmentService = {
   },
 
   // Calculate shipping
-  calculateShipping: async (id: number, service: string) => {
+  calculateShipping: async (id: number, service: string, provider?: string): Promise<{
+    service: string;
+    provider?: string;
+    cost: number;
+    formatted_cost: string;
+    breakdown?: CostBreakdown;
+  }> => {
     const response = await api.post(`/shipments/${id}/calculate_shipping/`, {
       service,
+      provider,
     });
     return response.data;
   },
@@ -80,6 +87,12 @@ export const shipmentService = {
   // Clear all shipments (for preview rejection)
   clearAll: async () => {
     const response = await api.delete('/shipments/clear_all/');
+    return response.data;
+  },
+
+  // Get tariff chart
+  getTariffChart: async (): Promise<TariffChartData> => {
+    const response = await api.get('/shipments/get_tariff_chart/');
     return response.data;
   },
 };

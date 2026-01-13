@@ -1,5 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator
+from decimal import Decimal
+from shipping_app.services.shipping_calculator import ShippingCalculator
 
 
 class SavedAddress(models.Model):
@@ -96,6 +98,23 @@ class Shipment(models.Model):
     shipping_service = models.CharField(max_length=50, blank=True, default='Ground Shipping')
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     
+    # Volumetric weight and zone fields
+    dimensional_weight = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True, 
+                                             help_text="Dimensional (volumetric) weight in pounds")
+    billable_weight = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True,
+                                          help_text="Billable weight (higher of actual or dimensional) in pounds")
+    weight_type = models.CharField(max_length=20, choices=[
+        ('actual', 'Actual'),
+        ('dimensional', 'Dimensional')
+    ], null=True, blank=True, help_text="Type of weight used for billing")
+    shipping_zone = models.IntegerField(choices=[(i, f'Zone {i}') for i in range(1, 9)], null=True, blank=True,
+                                        help_text="Shipping zone (1-8)")
+    is_intrastate = models.BooleanField(default=False, help_text="Whether shipment is intrastate (same state)")
+    zone_type = models.CharField(max_length=20, choices=[
+        ('intrastate', 'Intrastate'),
+        ('interstate', 'Interstate')
+    ], null=True, blank=True, help_text="Type of shipping zone")
+    
     # Address validation results
     address_validated = models.BooleanField(default=False)
     address_validation_api_used = models.CharField(max_length=50, blank=True)
@@ -152,6 +171,26 @@ class Shipment(models.Model):
         else:
             return 'valid'
     
+    def calculate_dimensional_weight(self) -> Decimal:
+        """Calculate dimensional weight based on package dimensions and carrier"""
+        if not all([self.length, self.width, self.height]):
+            return None
+        
+        calculator = ShippingCalculator()
+        return calculator.calculate_dimensional_weight(
+            self.length, self.width, self.height, self.shipping_provider or 'USPS'
+        )
+    
+    def calculate_shipping_zone(self) -> tuple:
+        """Calculate shipping zone from ZIP codes and states"""
+        if not all([self.from_zip, self.to_zip, self.from_state, self.to_state]):
+            return (3, 'intrastate', True)  # Default to zone 3
+        
+        calculator = ShippingCalculator()
+        return calculator.calculate_shipping_zone(
+            self.from_zip, self.to_zip, self.from_state, self.to_state
+        )
+    
     def calculate_status(self):
         """
         Auto-calculate status based on validation and completeness:
@@ -199,7 +238,7 @@ class Shipment(models.Model):
         return 'needs_review'
     
     def save(self, *args, **kwargs):
-        """Auto-update status before saving"""
+        """Auto-update status and calculate weights/zones before saving"""
         # Check if status is being explicitly set (manual override)
         # This happens when user toggles status or when status is in update_fields
         update_fields = kwargs.get('update_fields')
@@ -220,9 +259,51 @@ class Shipment(models.Model):
             if update_fields is not None and not hasattr(self, '_skip_auto_status'):
                 kwargs['update_fields'] = list(update_fields) + ['status']
         
-        # Clear skip flag
+        # Calculate dimensional weight, billable weight, and zone if dimensions/addresses are present
+        if not hasattr(self, '_skip_weight_calculation') or not self._skip_weight_calculation:
+            calculator = ShippingCalculator()
+            
+            # Calculate dimensional weight if dimensions are present
+            if all([self.length, self.width, self.height]):
+                dimensional_weight = calculator.calculate_dimensional_weight(
+                    self.length, self.width, self.height, self.shipping_provider or 'USPS'
+                )
+                self.dimensional_weight = dimensional_weight
+            else:
+                self.dimensional_weight = None
+            
+            # Calculate billable weight
+            billable_weight, weight_type = calculator.calculate_billable_weight(
+                self.weight_lbs, self.dimensional_weight
+            )
+            self.billable_weight = billable_weight
+            self.weight_type = weight_type
+            
+            # Calculate shipping zone if addresses are present
+            if all([self.from_zip, self.to_zip, self.from_state, self.to_state]):
+                zone, zone_type, is_intrastate = calculator.calculate_shipping_zone(
+                    self.from_zip, self.to_zip, self.from_state, self.to_state
+                )
+                self.shipping_zone = zone
+                self.zone_type = zone_type
+                self.is_intrastate = is_intrastate
+            else:
+                # Default values if addresses not available
+                self.shipping_zone = 3
+                self.zone_type = 'intrastate'
+                self.is_intrastate = True
+            
+            # Update update_fields if specified
+            if update_fields is not None:
+                weight_fields = ['dimensional_weight', 'billable_weight', 'weight_type', 
+                               'shipping_zone', 'zone_type', 'is_intrastate']
+                kwargs['update_fields'] = list(update_fields) + [f for f in weight_fields if f not in update_fields]
+        
+        # Clear skip flags
         if hasattr(self, '_skip_auto_status'):
             delattr(self, '_skip_auto_status')
+        if hasattr(self, '_skip_weight_calculation'):
+            delattr(self, '_skip_weight_calculation')
             
         super().save(*args, **kwargs)
 

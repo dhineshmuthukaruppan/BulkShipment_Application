@@ -17,6 +17,7 @@ import {
   ArrowRightOutlined,
   DeleteOutlined,
   SaveOutlined,
+  TableOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -31,8 +32,10 @@ import {
   saveDraft,
 } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
-import { Shipment } from '../../types/shipment';
+import { Shipment, CostBreakdown } from '../../types/shipment';
 import { useTheme } from '../../contexts/ThemeContext';
+import TariffChartModal from '../common/TariffChartModal';
+import CostBreakdownModal from '../common/CostBreakdownModal';
 
 const { Title, Text } = Typography;
 
@@ -66,6 +69,11 @@ const Step3Shipping: React.FC = () => {
   const dispatch = useAppDispatch();
   const { shipments, selectedShipments, totalCost } = useAppSelector((state) => state.wizard);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
+  const [tariffModalVisible, setTariffModalVisible] = useState(false);
+  const [breakdownModalVisible, setBreakdownModalVisible] = useState(false);
+  const [selectedShipmentForBreakdown, setSelectedShipmentForBreakdown] = useState<Shipment | null>(null);
+  const [breakdownData, setBreakdownData] = useState<CostBreakdown | null>(null);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
 
   useEffect(() => {
     dispatch(calculateTotalCost());
@@ -80,6 +88,9 @@ const Step3Shipping: React.FC = () => {
         shipping_service: firstService 
       });
       
+      // Recalculate shipping with new provider
+      await shipmentService.calculateShipping(shipmentId, firstService, provider);
+      
       // Fetch only the updated shipment instead of all shipments
       const updated = await shipmentService.getShipment(shipmentId);
       dispatch(updateShipment(updated));
@@ -92,7 +103,12 @@ const Step3Shipping: React.FC = () => {
 
   const handleServiceChange = async (shipmentId: number, service: string) => {
     try {
-      const result = await shipmentService.calculateShipping(shipmentId, service);
+      const shipment = shipments.find(s => s.id === shipmentId);
+      const result = await shipmentService.calculateShipping(
+        shipmentId, 
+        service,
+        shipment?.shipping_provider
+      );
       
       // Fetch only the updated shipment instead of all shipments
       const updated = await shipmentService.getShipment(shipmentId);
@@ -101,6 +117,31 @@ const Step3Shipping: React.FC = () => {
       message.success('Shipping cost updated');
     } catch (error) {
       message.error('Failed to update shipping service');
+    }
+  };
+
+  const handleViewBreakdown = async (shipment: Shipment) => {
+    try {
+      setLoadingBreakdown(true);
+      setSelectedShipmentForBreakdown(shipment);
+      
+      // Calculate shipping to get breakdown
+      const result = await shipmentService.calculateShipping(
+        shipment.id,
+        shipment.shipping_service,
+        shipment.shipping_provider
+      );
+      
+      if (result.breakdown) {
+        setBreakdownData(result.breakdown);
+        setBreakdownModalVisible(true);
+      } else {
+        message.warning('Breakdown data not available. Please recalculate shipping cost.');
+      }
+    } catch (error) {
+      message.error('Failed to load cost breakdown');
+    } finally {
+      setLoadingBreakdown(false);
     }
   };
 
@@ -229,10 +270,25 @@ const Step3Shipping: React.FC = () => {
     },
     {
       title: 'Cost',
-      width: 100,
+      width: 150,
       render: (_, record) => {
         const cost = Number(record.shipping_cost) || 0;
-        return <Text strong style={{ color: theme === 'dark' ? '#fff' : '#262626' }}>${cost.toFixed(2)}</Text>;
+        return (
+          <Space direction="vertical" size="small" style={{ width: '100%' }}>
+            <Text strong style={{ color: theme === 'dark' ? '#fff' : '#262626' }}>
+              ${cost.toFixed(2)}
+            </Text>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleViewBreakdown(record)}
+              loading={loadingBreakdown && selectedShipmentForBreakdown?.id === record.id}
+              style={{ padding: 0, height: 'auto', fontSize: '11px' }}
+            >
+              View Breakdown
+            </Button>
+          </Space>
+        );
       },
     },
     {
@@ -263,12 +319,21 @@ const Step3Shipping: React.FC = () => {
       {/* Total Price Display in Header Area */}
       <div style={{ 
         marginBottom: '24px', 
-        textAlign: 'right',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         padding: '12px 16px',
         background: theme === 'dark' ? '#1f1f1f' : '#f5f5f5',
         borderRadius: '4px',
         transition: 'background-color 0.3s ease',
       }}>
+        <Button
+          icon={<TableOutlined />}
+          onClick={() => setTariffModalVisible(true)}
+          type="default"
+        >
+          View Tariff Chart
+        </Button>
         <Text strong style={{ fontSize: '18px', color: theme === 'dark' ? '#fff' : '#262626' }}>
           Total: ${(Number(totalCost) || 0).toFixed(2)}
         </Text>
@@ -464,6 +529,22 @@ const Step3Shipping: React.FC = () => {
           </Space>
         </div>
       </Space>
+
+      <TariffChartModal
+        visible={tariffModalVisible}
+        onClose={() => setTariffModalVisible(false)}
+      />
+
+      <CostBreakdownModal
+        visible={breakdownModalVisible}
+        onClose={() => {
+          setBreakdownModalVisible(false);
+          setBreakdownData(null);
+          setSelectedShipmentForBreakdown(null);
+        }}
+        breakdown={breakdownData}
+        shipmentId={selectedShipmentForBreakdown?.id}
+      />
     </div>
   );
 };

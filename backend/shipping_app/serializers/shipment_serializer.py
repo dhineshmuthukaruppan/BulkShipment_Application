@@ -11,6 +11,8 @@ class ShipmentSerializer(serializers.ModelSerializer):
     validation_status = serializers.SerializerMethodField()
     has_label = serializers.SerializerMethodField()
     tracking_number = serializers.SerializerMethodField()
+    weight_calculation_breakdown = serializers.SerializerMethodField()
+    zone_info = serializers.SerializerMethodField()
     
     class Meta:
         model = Shipment
@@ -44,6 +46,29 @@ class ShipmentSerializer(serializers.ModelSerializer):
         except:
             pass
         return None
+    
+    def get_weight_calculation_breakdown(self, obj):
+        """Get weight calculation breakdown string"""
+        if not obj.billable_weight:
+            return None
+        
+        parts = []
+        parts.append(f"Actual: {obj.weight_lbs} lbs {obj.weight_oz} oz")
+        
+        if obj.dimensional_weight:
+            parts.append(f"Dimensional: {obj.dimensional_weight} lbs")
+        
+        parts.append(f"Billable: {obj.billable_weight} lbs ({obj.get_weight_type_display() or obj.weight_type})")
+        
+        return " | ".join(parts)
+    
+    def get_zone_info(self, obj):
+        """Get formatted zone information string"""
+        if not obj.shipping_zone:
+            return None
+        
+        zone_type_display = obj.get_zone_type_display() or obj.zone_type or ''
+        return f"Zone {obj.shipping_zone} ({zone_type_display})"
     
     def update(self, instance, validated_data):
         """Override update to track which parts have been reviewed"""
