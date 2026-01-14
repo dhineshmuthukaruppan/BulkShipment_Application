@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "CI=false DISABLE_ESLINT_PLUGIN=true npm run build",
   "builds": [
     {
       "src": "package.json",
@@ -20,6 +21,9 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "https://bulk-shipping-backend.onrender.com"
+    "REACT_APP_API_URL": "https://bulk-shipping-backend.onrender.com",
+    "CI": "false",
+    "GENERATE_SOURCEMAP": "false",
+    "DISABLE_ESLINT_PLUGIN": "true"
   }
 }

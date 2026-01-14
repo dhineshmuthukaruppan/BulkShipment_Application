@@ -39,7 +39,6 @@ import { SavedAddress, SavedPackage } from '../../types/shipment';
 import { savedAddressService, savedPackageService, orderNumberSettingsService, OrderNumberSettings } from '../../services/shipmentService';
 import './Master.css';
 
-const { TabPane } = Tabs;
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
@@ -95,6 +94,7 @@ const Master: React.FC<MasterProps> = () => {
     } else {
       loadData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
   const loadData = async () => {
@@ -704,7 +704,11 @@ const Master: React.FC<MasterProps> = () => {
                 <span>
                   No packages found.{' '}
                   <a 
-                    onClick={handleAddPackage}
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleAddPackage();
+                    }}
                     style={{ color: '#1890ff' }}
                     role="button"
                     tabIndex={0}
@@ -743,7 +747,11 @@ const Master: React.FC<MasterProps> = () => {
               <span>
                 No {activeTab === 'ship-from' ? 'ship-from' : 'ship-to'} addresses found.{' '}
                 <a 
-                  onClick={handleAddAddress}
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleAddAddress();
+                  }}
                   style={{ color: '#1890ff' }}
                   role="button"
                   tabIndex={0}

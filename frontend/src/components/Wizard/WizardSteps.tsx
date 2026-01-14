@@ -15,7 +15,7 @@ const { Title, Paragraph } = Typography;
 const WizardSteps: React.FC = () => {
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
-  const { currentStep, shipments, labelSize, currentPurchaseBatch } = useAppSelector((state) => state.wizard);
+  const { currentStep, labelSize, currentPurchaseBatch } = useAppSelector((state) => state.wizard);
 
   // Clear selected shipments when step changes
   useEffect(() => {

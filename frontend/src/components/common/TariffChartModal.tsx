@@ -48,6 +48,7 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
     if (visible && !tariffData) {
       loadTariffData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const loadTariffData = async () => {
@@ -198,7 +199,7 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
           showIcon
           action={
             <Space>
-              <a onClick={loadTariffData}>Retry</a>
+              <a href="javascript:void(0)" onClick={(e) => { e.preventDefault(); loadTariffData(); }}>Retry</a>
             </Space>
           }
         />

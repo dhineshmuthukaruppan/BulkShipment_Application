@@ -65,6 +65,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
       // Reset form when modal is closed
       form.resetFields();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialValues, form, addressType]);
 
   const handleSubmit = async () => {
@@ -224,7 +225,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
           label="Phone" 
           name="phone"
           rules={[
-            { pattern: /^[\d\s\-\(\)]+$/, message: 'Please enter a valid phone number' },
+            { pattern: /^[\d\s\-()]+$/, message: 'Please enter a valid phone number' },
             { max: 20, message: 'Phone number must be less than 20 characters' }
           ]}
           hasFeedback

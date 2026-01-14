@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Typography, Space, Badge, Avatar, Dropdown, Row, Col, Divider, MenuProps, Button, Tooltip } from 'antd';
+import { Layout, Typography, Space, Badge, Avatar, Dropdown, Row, Col, Divider, Button, Tooltip } from 'antd';
 import { 
-  UserOutlined, 
   BellOutlined,
-  SettingOutlined,
   LogoutOutlined,
   CreditCardOutlined,
   MessageOutlined,
