@@ -117,6 +117,47 @@ export const shipmentService = {
     const response = await api.get('/shipments/get_tariff_chart/');
     return response.data;
   },
+
+  // Test address validation
+  testValidateAddress: async (address: {
+    first_name?: string;
+    last_name?: string;
+    address?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  }) => {
+    const response = await api.post('/shipments/test_validate_address/', {
+      address,
+    });
+    return response.data;
+  },
+
+  // Batch validate both addresses
+  batchValidateAddresses: async (fromAddress: {
+    first_name?: string;
+    last_name?: string;
+    address?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  }, toAddress: {
+    first_name?: string;
+    last_name?: string;
+    address?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+  }) => {
+    const response = await api.post('/shipments/batch_validate_addresses/', {
+      from_address: fromAddress,
+      to_address: toAddress,
+    });
+    return response.data;
+  },
 };
 
 export const savedAddressService = {

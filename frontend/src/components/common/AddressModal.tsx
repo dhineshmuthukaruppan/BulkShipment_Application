@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Modal, Form, Input, Select, Space } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Modal, Form, Input, Select, Space, Spin } from 'antd';
 import { Shipment } from '../../types/shipment';
 
 const US_STATES = [
@@ -14,7 +14,7 @@ const US_STATES = [
 interface AddressModalProps {
   visible: boolean;
   onCancel: () => void;
-  onOk: (values: any) => void;
+  onOk: (values: any) => Promise<void> | void;
   initialValues?: Partial<Shipment>;
   title: string;
   addressType: 'from' | 'to';
@@ -29,6 +29,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
   addressType,
 }) => {
   const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
 
   // Get form values from initialValues
   const getFormValues = () => {
@@ -66,11 +67,19 @@ const AddressModal: React.FC<AddressModalProps> = ({
     }
   }, [visible, initialValues, form, addressType]);
 
-  const handleSubmit = () => {
-    form.validateFields().then((values) => {
-      onOk(values);
-      form.resetFields();
-    });
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      setSaving(true);
+      // Call onOk and wait for it to complete
+      await onOk(values);
+      // Don't reset fields here - let the parent handle it after successful save
+    } catch (error) {
+      // Validation failed, don't set saving state
+      console.error('Form validation failed:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -88,17 +97,21 @@ const AddressModal: React.FC<AddressModalProps> = ({
       centered
       mask={true}
       maskClosable={false}
-      okText="Save"
+      okText={saving ? "Saving..." : "Save"}
       cancelText="Cancel"
       destroyOnClose={true}
+      confirmLoading={saving}
+      okButtonProps={{ loading: saving, disabled: saving }}
+      cancelButtonProps={{ disabled: saving }}
     >
-      <Form 
-        form={form} 
-        layout="vertical" 
-        aria-label={title}
-        initialValues={visible && initialValues ? getFormValues() : {}}
-        preserve={false}
-      >
+      <Spin spinning={saving} tip="Saving and validating address...">
+        <Form 
+          form={form} 
+          layout="vertical" 
+          aria-label={title}
+          initialValues={visible && initialValues ? getFormValues() : {}}
+          preserve={false}
+        >
         <Form.Item
           label="First Name"
           name="first_name"
@@ -223,6 +236,7 @@ const AddressModal: React.FC<AddressModalProps> = ({
           />
         </Form.Item>
       </Form>
+      </Spin>
     </Modal>
   );
 };
