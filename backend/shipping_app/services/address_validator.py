@@ -70,6 +70,13 @@ class AddressValidator:
                     address_dict, 'USPS Addresses 3.0', result, fallback_triggered=False
                 )
                 return result
+            # If invalid, return immediately with error_details (don't fallback if we got a definitive answer)
+            if result.get('error_details'):
+                self._update_rate_limit('usps')
+                self.logger.log_address_validation(
+                    address_dict, 'USPS Addresses 3.0', result, fallback_triggered=False
+                )
+                return result
         
         # Try legacy USPS Web Tools API (deprecated, shutting down Jan 2026)
         if self.usps_api_key and self._check_rate_limit('usps_legacy'):
@@ -80,11 +87,26 @@ class AddressValidator:
                     address_dict, 'USPS Web Tools (Legacy)', result, fallback_triggered=False
                 )
                 return result
+            # If invalid, return immediately with error_details (don't fallback if we got a definitive answer)
+            if result.get('error_details'):
+                self._update_rate_limit('usps_legacy')
+                self.logger.log_address_validation(
+                    address_dict, 'USPS Web Tools (Legacy)', result, fallback_triggered=False
+                )
+                return result
         
         # Try Google Maps (free tier: $200/month credit)
         if self.google_api_key and self._check_rate_limit('google'):
             result = self._validate_google_maps(normalized)
             if result.get('valid'):
+                self._update_rate_limit('google')
+                self.logger.log_address_validation(
+                    address_dict, 'Google Maps', result, 
+                    fallback_triggered=not bool(self.usps_api_key)
+                )
+                return result
+            # If invalid, return immediately with error_details (don't fallback if we got a definitive answer)
+            if result.get('error_details'):
                 self._update_rate_limit('google')
                 self.logger.log_address_validation(
                     address_dict, 'Google Maps', result, 
@@ -107,6 +129,13 @@ class AddressValidator:
         if self.lob_api_key and self._check_rate_limit('lob'):
             result = self._validate_lob(normalized)
             if result.get('valid'):
+                self._update_rate_limit('lob')
+                self.logger.log_address_validation(
+                    address_dict, 'Lob', result, fallback_triggered=True
+                )
+                return result
+            # If invalid, return immediately with error_details (don't fallback if we got a definitive answer)
+            if result.get('error_details'):
                 self._update_rate_limit('lob')
                 self.logger.log_address_validation(
                     address_dict, 'Lob', result, fallback_triggered=True
@@ -186,13 +215,45 @@ class AddressValidator:
         
         return None
     
+    def _analyze_address_fields(self, address_dict: Dict[str, Any]) -> List[str]:
+        error_details = []
+
+        # Required: street
+        if not address_dict.get('address') or not address_dict.get('address', '').strip():
+            error_details.append('invalid_street')
+
+        # Required: city
+        if not address_dict.get('city') or not address_dict.get('city', '').strip():
+            error_details.append('invalid_city')
+
+        # Required: ZIP (minimum 5 digits)
+        zip_code = address_dict.get('zip', '').strip()
+
+        if not zip_code:
+            error_details.append('invalid_pincode')
+        else:
+            # Extract digits only
+            zip_digits = re.sub(r'\D', '', zip_code)
+
+            # ZIP must have at least 5 digits
+            if len(zip_digits) < 5:
+                error_details.append('invalid_pincode')
+
+        return error_details
+
     def _validate_usps_v3(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Validate using USPS Addresses 3.0 API (new OAuth-based API)"""
         try:
             # Get OAuth token
             access_token = self._get_usps_oauth_token()
             if not access_token:
-                return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': 'Failed to get OAuth token'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'USPS Addresses 3.0', 
+                    'error': 'Failed to get OAuth token',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
             
             # Build address string
             street_address = address_dict.get('address', '')
@@ -265,29 +326,72 @@ class AddressValidator:
                         'fallback_used': False
                     }
                 else:
-                    return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': 'Invalid response format'}
+                    # No address in response - analyze which fields might be invalid
+                    error_details = self._analyze_address_fields(address_dict)
+                    return {
+                        'valid': False, 
+                        'api_used': 'USPS Addresses 3.0', 
+                        'error': 'Invalid response format - address not found',
+                        'error_details': error_details if error_details else ['invalid_address']
+                    }
             elif response.status_code == 401:
                 logger.warning("USPS OAuth token expired or invalid")
                 # Clear cached token and retry once
                 cache.delete('usps_oauth_token')
-                return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': 'Authentication failed'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'USPS Addresses 3.0', 
+                    'error': 'Authentication failed',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
             elif response.status_code == 404:
-                return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': 'Address not found'}
+                # Address not found - analyze which fields might be invalid
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'USPS Addresses 3.0', 
+                    'error': 'Address not found',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
             else:
                 logger.warning(f"USPS API error: {response.status_code} - {response.text}")
-                return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': f'API error: {response.status_code}'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'USPS Addresses 3.0', 
+                    'error': f'API error: {response.status_code}',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
                 
         except requests.exceptions.Timeout:
             logger.warning("USPS Addresses 3.0 API timeout")
-            return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': 'Timeout'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'USPS Addresses 3.0', 
+                'error': 'Timeout',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except requests.exceptions.RequestException as e:
             logger.error(f"USPS Addresses 3.0 API request error: {str(e)}")
-            return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': str(e)}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'USPS Addresses 3.0', 
+                'error': str(e),
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except Exception as e:
             logger.error(f"USPS Addresses 3.0 validation error: {str(e)}")
             self.logger.log_error('usps_v3_validation_error', str(e))
-        
-        return {'valid': False, 'api_used': 'USPS Addresses 3.0', 'error': 'Unknown error'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'USPS Addresses 3.0', 
+                'error': 'Unknown error',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
     
     def _validate_usps(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Validate using USPS Address Validation API (free tier available)"""
@@ -331,7 +435,13 @@ class AddressValidator:
                             error_desc = error.find('Description')
                             if error_desc is not None and error_desc.text:
                                 logger.warning(f"USPS validation error: {error_desc.text}")
-                                return {'valid': False, 'api_used': 'USPS', 'error': error_desc.text}
+                                error_details = self._analyze_address_fields(address_dict)
+                                return {
+                                    'valid': False, 
+                                    'api_used': 'USPS', 
+                                    'error': error_desc.text,
+                                    'error_details': error_details if error_details else ['invalid_address']
+                                }
                         
                         # Extract corrected address
                         corrected = address_dict.copy()
@@ -375,19 +485,42 @@ class AddressValidator:
                         }
                 except ET.ParseError as e:
                     logger.error(f"USPS XML parse error: {str(e)}")
-                    return {'valid': False, 'api_used': 'USPS', 'error': 'XML parse error'}
+                    error_details = self._analyze_address_fields(address_dict)
+                    return {
+                        'valid': False, 
+                        'api_used': 'USPS', 
+                        'error': 'XML parse error',
+                        'error_details': error_details if error_details else ['invalid_address']
+                    }
             
         except requests.exceptions.Timeout:
             logger.warning("USPS API timeout")
-            return {'valid': False, 'api_used': 'USPS', 'error': 'Timeout'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'USPS', 
+                'error': 'Timeout',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except requests.exceptions.RequestException as e:
             logger.error(f"USPS API request error: {str(e)}")
-            return {'valid': False, 'api_used': 'USPS', 'error': str(e)}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'USPS', 
+                'error': str(e),
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except Exception as e:
             logger.error(f"USPS validation error: {str(e)}")
             self.logger.log_error('usps_validation_error', str(e))
-        
-        return {'valid': False, 'api_used': 'USPS', 'error': 'Unknown error'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'USPS', 
+                'error': 'Unknown error',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
     
     def _validate_google_maps(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Validate using Google Maps Geocoding API"""
@@ -415,7 +548,13 @@ class AddressValidator:
                 # Check for API errors
                 if data.get('status') == 'OVER_QUERY_LIMIT':
                     logger.warning("Google Maps API quota exceeded")
-                    return {'valid': False, 'api_used': 'Google Maps', 'error': 'Quota exceeded'}
+                    error_details = self._analyze_address_fields(address_dict)
+                    return {
+                        'valid': False, 
+                        'api_used': 'Google Maps', 
+                        'error': 'Quota exceeded',
+                        'error_details': error_details if error_details else ['invalid_address']
+                    }
                 
                 if data.get('status') == 'OK' and data.get('results'):
                     result = data['results'][0]
@@ -462,19 +601,43 @@ class AddressValidator:
                         'fallback_used': False
                     }
                 else:
-                    return {'valid': False, 'api_used': 'Google Maps', 'error': data.get('status', 'Unknown error')}
+                    # Address not found or invalid
+                    error_details = self._analyze_address_fields(address_dict)
+                    return {
+                        'valid': False, 
+                        'api_used': 'Google Maps', 
+                        'error': data.get('status', 'Unknown error'),
+                        'error_details': error_details if error_details else ['invalid_address']
+                    }
                     
         except requests.exceptions.Timeout:
             logger.warning("Google Maps API timeout")
-            return {'valid': False, 'api_used': 'Google Maps', 'error': 'Timeout'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'Google Maps', 
+                'error': 'Timeout',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except requests.exceptions.RequestException as e:
             logger.error(f"Google Maps API request error: {str(e)}")
-            return {'valid': False, 'api_used': 'Google Maps', 'error': str(e)}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'Google Maps', 
+                'error': str(e),
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except Exception as e:
             logger.error(f"Google Maps validation error: {str(e)}")
             self.logger.log_error('google_validation_error', str(e))
-        
-        return {'valid': False, 'api_used': 'Google Maps', 'error': 'Unknown error'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'Google Maps', 
+                'error': 'Unknown error',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
     
     def _validate_smarty(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Validate using SmartyStreets API (free tier: 250/month)"""
@@ -506,25 +669,14 @@ class AddressValidator:
                     
                     # If precision is 'Unknown' or RDI indicates undeliverable, mark as invalid
                     if precision == 'Unknown' or (rdi and rdi not in ['Residential', 'Business', 'Highrise']):
-                        # Only flag specific components if they are actually missing from input
-                        # Don't infer issues just because API couldn't verify them
-                        error_details = []
-                        if not address_dict.get('city') or not address_dict.get('city').strip():
-                            error_details.append('invalid_city')
-                        if not address_dict.get('zip') or not address_dict.get('zip').strip():
-                            error_details.append('invalid_pincode')
-                        if not address_dict.get('address') or not address_dict.get('address').strip():
-                            error_details.append('invalid_street')
-                        # If all fields are present, don't flag specific components
-                        # The address might be valid but not in SmartyStreets database
-                        if not error_details:
-                            error_details = []  # Return empty - let views.py handle as general invalid
+                        # Analyze which fields might be invalid
+                        error_details = self._analyze_address_fields(address_dict)
                         
                         return {
                             'valid': False,
                             'api_used': 'SmartyStreets',
                             'error': 'Address not found or not deliverable',
-                            'error_details': error_details,  # Only specific if fields are missing
+                            'error_details': error_details if error_details else ['invalid_address'],
                             'corrected_address': address_dict,
                             'corrections': []
                         }
@@ -572,49 +724,64 @@ class AddressValidator:
                     }
                 else:
                     # Empty response means address was not found/invalid
-                    # Only flag specific components if they are actually missing (not just format mismatch)
-                    # Don't flag format issues - the API might not support international formats
-                    error_details = []
-                    if not address_dict.get('address') or not address_dict.get('address').strip():
-                        error_details.append('invalid_street')
-                    if not address_dict.get('city') or not address_dict.get('city').strip():
-                        error_details.append('invalid_city')
-                    if not address_dict.get('zip') or not address_dict.get('zip').strip():
-                        error_details.append('invalid_pincode')
-                    # Don't check format - international addresses may have different formats
-                    # Only flag if field is completely missing
-                    
-                    # If no specific missing fields, it's a general invalid address
-                    # Don't infer specific component issues - the address might be valid but not in SmartyStreets database
-                    if not error_details:
-                        error_details.append('invalid_address')
+                    # Analyze which fields might be invalid
+                    error_details = self._analyze_address_fields(address_dict)
                     
                     return {
                         'valid': False,
                         'api_used': 'SmartyStreets',
                         'error': 'Address not found - invalid address',
-                        'error_details': error_details if error_details != ['invalid_address'] else [],  # Only return specific details if fields are missing
+                        'error_details': error_details if error_details else ['invalid_address'],
                         'corrected_address': address_dict,
                         'corrections': []
                     }
             elif response.status_code == 401:
                 logger.warning("SmartyStreets API authentication failed")
-                return {'valid': False, 'api_used': 'SmartyStreets', 'error': 'Authentication failed'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'SmartyStreets', 
+                    'error': 'Authentication failed',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
             elif response.status_code == 402:
                 logger.warning("SmartyStreets API quota exceeded")
-                return {'valid': False, 'api_used': 'SmartyStreets', 'error': 'Quota exceeded'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'SmartyStreets', 
+                    'error': 'Quota exceeded',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
                 
         except requests.exceptions.Timeout:
             logger.warning("SmartyStreets API timeout")
-            return {'valid': False, 'api_used': 'SmartyStreets', 'error': 'Timeout'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'SmartyStreets', 
+                'error': 'Timeout',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except requests.exceptions.RequestException as e:
             logger.error(f"SmartyStreets API request error: {str(e)}")
-            return {'valid': False, 'api_used': 'SmartyStreets', 'error': str(e)}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'SmartyStreets', 
+                'error': str(e),
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except Exception as e:
             logger.error(f"SmartyStreets validation error: {str(e)}")
             self.logger.log_error('smarty_validation_error', str(e))
-        
-        return {'valid': False, 'api_used': 'SmartyStreets', 'error': 'Unknown error'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'SmartyStreets', 
+                'error': 'Unknown error',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
     
     def _validate_lob(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Validate using Lob Address Verification API (free tier: 10,000/month)"""
@@ -685,22 +852,60 @@ class AddressValidator:
                     return {'valid': False, 'api_used': 'Lob', 'error': f"Not deliverable: {data.get('deliverability', 'unknown')}"}
             elif response.status_code == 401:
                 logger.warning("Lob API authentication failed")
-                return {'valid': False, 'api_used': 'Lob', 'error': 'Authentication failed'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'Lob', 
+                    'error': 'Authentication failed',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
             elif response.status_code == 429:
                 logger.warning("Lob API rate limit exceeded")
-                return {'valid': False, 'api_used': 'Lob', 'error': 'Rate limit exceeded'}
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'Lob', 
+                    'error': 'Rate limit exceeded',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
+            else:
+                # Other error status codes
+                error_details = self._analyze_address_fields(address_dict)
+                return {
+                    'valid': False, 
+                    'api_used': 'Lob', 
+                    'error': f'API error: {response.status_code}',
+                    'error_details': error_details if error_details else ['invalid_address']
+                }
                 
         except requests.exceptions.Timeout:
             logger.warning("Lob API timeout")
-            return {'valid': False, 'api_used': 'Lob', 'error': 'Timeout'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'Lob', 
+                'error': 'Timeout',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except requests.exceptions.RequestException as e:
             logger.error(f"Lob API request error: {str(e)}")
-            return {'valid': False, 'api_used': 'Lob', 'error': str(e)}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'Lob', 
+                'error': str(e),
+                'error_details': error_details if error_details else ['invalid_address']
+            }
         except Exception as e:
             logger.error(f"Lob validation error: {str(e)}")
             self.logger.log_error('lob_validation_error', str(e))
-        
-        return {'valid': False, 'api_used': 'Lob', 'error': 'Unknown error'}
+            error_details = self._analyze_address_fields(address_dict)
+            return {
+                'valid': False, 
+                'api_used': 'Lob', 
+                'error': 'Unknown error',
+                'error_details': error_details if error_details else ['invalid_address']
+            }
     
     def _basic_validation(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Basic validation using regex patterns (fallback)"""

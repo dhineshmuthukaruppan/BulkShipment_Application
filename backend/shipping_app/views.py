@@ -211,6 +211,13 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                                     validation_flags.append('invalid_ship_from_address')
                             
                             row_data['validation_flags'] = validation_flags
+                            # Set address validation error for from address
+                            error_message = from_validation_result.get('error', 'Address could not be validated')
+                            row_data['from_address_validation_error'] = error_message
+                            # Add to validation errors
+                            validation_errors = row_data.get('validation_errors', [])
+                            validation_errors.append(f"Invalid ship from address: {error_message}")
+                            row_data['validation_errors'] = validation_errors
                     
                     # Validate recipient address
                     to_address = {
@@ -623,6 +630,84 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             shipment.save()
         
         return Response(result)
+    
+    @action(detail=False, methods=['post'])
+    def test_validate_address(self, request):
+        """
+        Test address validation API endpoint.
+        Accepts address data in request body and returns validation result.
+        """
+        validator = AddressValidator()
+        
+        address_data = request.data.get('address', {})
+        if not address_data:
+            return Response(
+                {'error': 'Address data is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate the address
+        result = validator.validate(address_data)
+        
+        return Response(result, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['post'])
+    def batch_validate_addresses(self, request):
+        """
+        Batch validate multiple addresses in one API call.
+        Accepts 'from_address' and 'to_address' in request body.
+        Returns validation results for both addresses and overall status.
+        Validates both addresses in parallel for better performance.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        validator = AddressValidator()
+        
+        from_address = request.data.get('from_address', {})
+        to_address = request.data.get('to_address', {})
+        
+        if not from_address and not to_address:
+            return Response(
+                {'error': 'At least one address (from_address or to_address) is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        results = {}
+        
+        # Validate both addresses in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {}
+            
+            # Submit validation tasks
+            if from_address:
+                futures['from_address'] = executor.submit(validator.validate, from_address)
+            if to_address:
+                futures['to_address'] = executor.submit(validator.validate, to_address)
+            
+            # Collect results as they complete
+            for key, future in futures.items():
+                try:
+                    results[key] = future.result()
+                except Exception as e:
+                    # If validation fails, return error result
+                    results[key] = {
+                        'valid': False,
+                        'error': str(e),
+                        'error_details': []
+                    }
+        
+        # Determine overall validation status
+        from_valid = results.get('from_address', {}).get('valid', True) if from_address else True
+        to_valid = results.get('to_address', {}).get('valid', True) if to_address else True
+        
+        # Add individual validation statuses
+        results['from_address_valid'] = from_valid
+        results['to_address_valid'] = to_valid
+        results['both_valid'] = from_valid and to_valid
+        results['valid'] = from_valid and to_valid  # Overall valid status
+        results['overall_status'] = 'valid' if results['both_valid'] else 'invalid'
+        
+        return Response(results, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def calculate_shipping(self, request, pk=None):
