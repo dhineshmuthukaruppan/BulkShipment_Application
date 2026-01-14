@@ -350,21 +350,21 @@ const Step2Review: React.FC = () => {
         message.success('Address updated successfully. Validating addresses...');
         return;
       } else {
-        // Recalculate shipping if package changed
-        if (editModalType === 'package') {
+      // Recalculate shipping if package changed
+      if (editModalType === 'package') {
           try {
-            const updated = await shipmentService.getShipment(editingShipment.id);
+        const updated = await shipmentService.getShipment(editingShipment.id);
             if (updated.shipping_service) {
               await shipmentService.calculateShipping(updated.id, updated.shipping_service, updated.shipping_provider);
             }
-            const refreshed = await shipmentService.getShipment(updated.id);
-            dispatch(updateShipment(refreshed));
-            
-            // Check status change
-            if (oldStatus !== 'ready' && refreshed.status === 'ready') {
-              message.success('✓ Marked ready');
-            } else {
-              message.success('Shipment updated successfully');
+        const refreshed = await shipmentService.getShipment(updated.id);
+        dispatch(updateShipment(refreshed));
+        
+        // Check status change
+        if (oldStatus !== 'ready' && refreshed.status === 'ready') {
+          message.success('✓ Marked ready');
+        } else {
+          message.success('Shipment updated successfully');
             }
           } catch (calcError: any) {
             // If calculation fails, still update the shipment but log the error
@@ -372,17 +372,17 @@ const Step2Review: React.FC = () => {
             const refreshed = await shipmentService.getShipment(editingShipment.id);
             dispatch(updateShipment(refreshed));
             message.success('Shipment updated successfully (shipping cost calculation skipped)');
-          }
+        }
+      } else {
+        // Always refresh to get the latest status after update
+        const refreshed = await shipmentService.getShipment(editingShipment.id);
+        dispatch(updateShipment(refreshed));
+        
+        // Check status change
+        if (oldStatus !== 'ready' && refreshed.status === 'ready') {
+          message.success('✓ Marked ready');
         } else {
-          // Always refresh to get the latest status after update
-          const refreshed = await shipmentService.getShipment(editingShipment.id);
-          dispatch(updateShipment(refreshed));
-          
-          // Check status change
-          if (oldStatus !== 'ready' && refreshed.status === 'ready') {
-            message.success('✓ Marked ready');
-          } else {
-            message.success('Shipment updated successfully');
+          message.success('Shipment updated successfully');
           }
         }
       }
@@ -602,7 +602,7 @@ const Step2Review: React.FC = () => {
           // Explicitly set status to 'ready'
           const updated = await shipmentService.updateShipment(id, { status: 'ready' });
           return updated;
-        } catch (error) {
+    } catch (error) {
           console.error(`Failed to approve shipment ${id}:`, error);
           throw error;
         }
@@ -990,8 +990,8 @@ const Step2Review: React.FC = () => {
           <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '13px', position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {formatAddress(record, 'from')}
-              </div>
+          {formatAddress(record, 'from')}
+        </div>
               {isFromAddressInvalid && (
                 <Tag color="error" style={{ fontSize: '10px', padding: '2px 6px', margin: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
                   Invalid
@@ -1029,8 +1029,8 @@ const Step2Review: React.FC = () => {
           <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '13px', position: 'relative' }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                {formatAddress(record, 'to')}
-              </div>
+          {formatAddress(record, 'to')}
+        </div>
               {isToAddressInvalid && (
                 <Tag color="error" style={{ fontSize: '10px', padding: '2px 6px', margin: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
                   Invalid
@@ -1187,45 +1187,45 @@ const Step2Review: React.FC = () => {
             </Button>
 
             {/* More Actions Dropdown */}
-            <Dropdown
-              menu={{ items: menuItems }}
-              trigger={['click']}
-              placement="bottomRight"
-              overlayStyle={{ minWidth: '220px' }}
-              overlayClassName="action-dropdown"
-            >
-              <Button
-                type="text"
-                icon={<HorizontalDotsIcon />}
-                size="small"
-                style={{
-                  fontSize: '20px',
-                  color: theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959',
-                  padding: '6px 12px',
-                  minWidth: '48px',
+          <Dropdown
+            menu={{ items: menuItems }}
+            trigger={['click']}
+            placement="bottomRight"
+            overlayStyle={{ minWidth: '220px' }}
+            overlayClassName="action-dropdown"
+          >
+            <Button
+              type="text"
+              icon={<HorizontalDotsIcon />}
+              size="small"
+              style={{
+                fontSize: '20px',
+                color: theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959',
+                padding: '6px 12px',
+                minWidth: '48px',
                   height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '6px',
-                  transition: 'all 0.2s',
-                  cursor: 'pointer',
-                  border: '1px solid transparent',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#262626' : '#f5f5f5';
-                  e.currentTarget.style.color = theme === 'dark' ? '#fff' : '#262626';
-                  e.currentTarget.style.borderColor = '#d9d9d9';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.color = theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959';
-                  e.currentTarget.style.borderColor = 'transparent';
-                }}
-                onClick={(e) => e.stopPropagation()}
-                aria-label="More actions"
-              />
-            </Dropdown>
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                transition: 'all 0.2s',
+                cursor: 'pointer',
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#262626' : '#f5f5f5';
+                e.currentTarget.style.color = theme === 'dark' ? '#fff' : '#262626';
+                e.currentTarget.style.borderColor = '#d9d9d9';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = theme === 'dark' ? 'rgba(255, 255, 255, 0.65)' : '#595959';
+                e.currentTarget.style.borderColor = 'transparent';
+              }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label="More actions"
+            />
+          </Dropdown>
           </Space>
         );
       },
@@ -1627,7 +1627,7 @@ const Step2Review: React.FC = () => {
                 >
                   Approve All
                 </Button>
-                <Button
+                <Button 
                   size="small"
                   onClick={() => setBulkActionModal('address')}
                   className="bulk-action-btn"
@@ -1742,19 +1742,13 @@ const Step2Review: React.FC = () => {
         title="Change Ship From Address for Selected"
         open={bulkActionModal === 'address'}
         onCancel={() => setBulkActionModal(null)}
-        onOk={() => setBulkActionModal(null)}
         centered
         mask={true}
         maskClosable={false}
-        okText="Close"
-        cancelText="Cancel"
         width={700}
         footer={[
           <Button key="cancel" onClick={() => setBulkActionModal(null)}>
             Cancel
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setBulkActionModal(null)}>
-            Close
           </Button>,
         ]}
       >
@@ -1800,35 +1794,49 @@ const Step2Review: React.FC = () => {
               >
                 Reload
               </Button>
-            </div>
-            <Select
-              style={{ width: '100%' }}
-              placeholder="Search or select saved address"
-              showSearch
-              filterOption={(input, option) => {
-                const searchText = input.toLowerCase();
-                const optionText = String(option?.label || option?.children || '').toLowerCase();
-                return optionText.includes(searchText);
-              }}
-              onChange={(value) => {
+        </div>
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Search or select saved address"
+          showSearch
+          filterOption={(input, option) => {
+            const searchText = input.toLowerCase();
+            const optionText = String(option?.label || option?.children || '').toLowerCase();
+            return optionText.includes(searchText);
+          }}
+          onChange={(value) => {
                 handleBulkAddressChange(value, 'from');
-                setBulkActionModal(null);
-              }}
-            >
-              {savedAddresses.map(addr => {
-                const fullAddress = [
-                  addr.name,
-                  addr.address,
-                  addr.address2,
-                  `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
-                ].filter(Boolean).join(', ');
-                return (
-                  <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
-                    {fullAddress}
-                  </Select.Option>
-                );
-              })}
-            </Select>
+            setBulkActionModal(null);
+          }}
+              optionLabelProp="label"
+        >
+          {savedAddresses.map(addr => {
+                const contactName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim();
+                const addressParts = [
+              addr.address,
+              addr.address2,
+              `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
+                ].filter(Boolean);
+                const addressLines = [
+                  contactName,
+                  addr.phone,
+                  ...addressParts
+                ].filter(Boolean);
+                const fullAddressText = addressLines.join(', ');
+                const displayParts = [
+                  addr.is_default && '⭐',
+                  contactName,
+                  addr.phone,
+                  ...addressParts
+                ].filter(Boolean);
+                const displayText = displayParts.join(' • ');
+            return (
+                  <Select.Option key={addr.id} value={addr.id} label={fullAddressText}>
+                    {displayText}
+              </Select.Option>
+            );
+          })}
+        </Select>
           </>
         )}
       </Modal>
@@ -1837,19 +1845,13 @@ const Step2Review: React.FC = () => {
         title="Change Ship To Address for Selected"
         open={bulkActionModal === 'to_address'}
         onCancel={() => setBulkActionModal(null)}
-        onOk={() => setBulkActionModal(null)}
         centered
         mask={true}
         maskClosable={false}
-        okText="Close"
-        cancelText="Cancel"
         width={700}
         footer={[
           <Button key="cancel" onClick={() => setBulkActionModal(null)}>
             Cancel
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setBulkActionModal(null)}>
-            Close
           </Button>,
         ]}
       >
@@ -1909,21 +1911,35 @@ const Step2Review: React.FC = () => {
                 handleBulkAddressChange(value, 'to');
                 setBulkActionModal(null);
               }}
+              optionLabelProp="label"
             >
               {savedToAddresses.map(addr => {
-                const fullAddress = [
-                  addr.name,
+                const contactName = `${addr.first_name || ''} ${addr.last_name || ''}`.trim();
+                const addressParts = [
                   addr.address,
                   addr.address2,
                   `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
-                ].filter(Boolean).join(', ');
+                ].filter(Boolean);
+                const addressLines = [
+                  contactName,
+                  addr.phone,
+                  ...addressParts
+                ].filter(Boolean);
+                const fullAddressText = addressLines.join(', ');
+                const displayParts = [
+                  addr.is_default && '⭐',
+                  contactName,
+                  addr.phone,
+                  ...addressParts
+                ].filter(Boolean);
+                const displayText = displayParts.join(' • ');
                 return (
-                  <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
-                    {fullAddress}
+                  <Select.Option key={addr.id} value={addr.id} label={fullAddressText}>
+                    {displayText}
                   </Select.Option>
                 );
               })}
-            </Select>
+        </Select>
           </>
         )}
       </Modal>

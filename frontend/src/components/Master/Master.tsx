@@ -19,6 +19,7 @@ import {
   InputNumber,
   Empty,
   Skeleton,
+  Select,
 } from 'antd';
 import {
   PlusOutlined,
@@ -45,6 +46,31 @@ const { TextArea } = Input;
 interface MasterProps {}
 
 const USER_BALANCE_KEY = 'shipping_pro_user_balance';
+
+const US_STATES = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+  'DC', 'PR'
+];
+
+const US_STATE_NAMES: { [key: string]: string } = {
+  'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+  'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware',
+  'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho',
+  'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas',
+  'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+  'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+  'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+  'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+  'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma',
+  'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+  'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+  'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+  'WI': 'Wisconsin', 'WY': 'Wyoming', 'DC': 'District of Columbia', 'PR': 'Puerto Rico'
+};
 
 const Master: React.FC<MasterProps> = () => {
   // Check localStorage for desired tab on mount
@@ -192,9 +218,18 @@ const Master: React.FC<MasterProps> = () => {
 
   const handleAddressSubmit = async (values: any) => {
     try {
+      // Auto-generate name if not provided
+      const addressName = values.name || 
+        `${values.city || 'Address'}, ${values.state || ''}`.trim() || 
+        'Untitled Address';
+      
       // Determine address type based on active tab
       const addressType = activeTab === 'ship-to' ? 'to' : 'from';
-      const addressData = { ...values, address_type: addressType };
+      const addressData = { 
+        ...values, 
+        name: addressName,
+        address_type: addressType 
+      };
       
       if (editingAddress) {
         await savedAddressService.update(editingAddress.id, addressData);
@@ -266,10 +301,11 @@ const Master: React.FC<MasterProps> = () => {
     if (!searchText) return addresses;
     return addresses.filter(
       (addr) =>
-        addr.name.toLowerCase().includes(searchText.toLowerCase()) ||
         addr.address.toLowerCase().includes(searchText.toLowerCase()) ||
         addr.city.toLowerCase().includes(searchText.toLowerCase()) ||
-        addr.state.toLowerCase().includes(searchText.toLowerCase())
+        addr.state.toLowerCase().includes(searchText.toLowerCase()) ||
+        (addr.first_name && addr.first_name.toLowerCase().includes(searchText.toLowerCase())) ||
+        (addr.last_name && addr.last_name.toLowerCase().includes(searchText.toLowerCase()))
     );
   };
 
@@ -284,45 +320,27 @@ const Master: React.FC<MasterProps> = () => {
   // Address columns
   const addressColumns: ColumnsType<SavedAddress> = [
     {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
-      render: (text, record) => (
-        <Space>
-          {record.is_default && <StarFilled style={{ color: '#faad14' }} />}
-          <strong>{text}</strong>
-        </Space>
-      ),
-    },
-    {
-      title: 'Contact',
-      key: 'contact',
+      title: 'Shipping Address',
+      key: 'shipping_address',
       render: (_, record) => (
         <div>
-          <div>{`${record.first_name} ${record.last_name || ''}`.trim()}</div>
-          {record.phone && <div style={{ color: '#8c8c8c', fontSize: '14px' }}>{record.phone}</div>}
+          {record.is_default && (
+            <StarFilled style={{ color: '#faad14', marginRight: 8 }} />
+          )}
+          <div>
+            {(record.first_name || record.last_name) && (
+              <div><strong>{`${record.first_name || ''} ${record.last_name || ''}`.trim()}</strong></div>
+            )}
+            {record.phone && (
+              <div style={{ color: '#8c8c8c', fontSize: '14px' }}>{record.phone}</div>
+            )}
+            <div style={{ marginTop: 4 }}>
+              <div>{record.address}</div>
+              {record.address2 && <div>{record.address2}</div>}
+              <div>{`${record.city}, ${record.state} ${record.zip_code}`}</div>
+            </div>
+          </div>
         </div>
-      ),
-    },
-    {
-      title: 'Address',
-      key: 'address',
-      render: (_, record) => (
-        <div>
-          <div>{record.address}</div>
-          {record.address2 && <div>{record.address2}</div>}
-          <div>{`${record.city}, ${record.state} ${record.zip_code}`}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (_, record) => (
-        <Space>
-          {record.is_default && <Tag color="gold">Default</Tag>}
-        </Space>
       ),
     },
     {
@@ -806,26 +824,6 @@ const Master: React.FC<MasterProps> = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="name"
-                label="Address Name"
-                rules={[{ required: true, message: 'Please enter address name' }]}
-              >
-                <Input placeholder="e.g., Main Warehouse" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="is_default" valuePropName="checked" label=" ">
-                <Space>
-                  <Switch />
-                  <span>Set as Default Address</span>
-                </Space>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
                 name="first_name"
                 label="First Name"
                 rules={[{ required: true, message: 'Please enter first name' }]}
@@ -866,12 +864,23 @@ const Master: React.FC<MasterProps> = () => {
               <Form.Item
                 name="state"
                 label="State"
-                rules={[
-                  { required: true, message: 'Please enter state' },
-                  { len: 2, message: 'State must be 2 characters' },
-                ]}
+                rules={[{ required: true, message: 'Please select state' }]}
               >
-                <Input placeholder="State" maxLength={2} style={{ textTransform: 'uppercase' }} />
+                <Select
+                  placeholder="Select state"
+                  showSearch
+                  style={{ textTransform: 'uppercase' }}
+                  filterOption={(input, option) => {
+                    const searchText = input.toLowerCase();
+                    const abbrev = option?.value?.toLowerCase() || '';
+                    const fullName = US_STATE_NAMES[option?.value as string]?.toLowerCase() || '';
+                    return abbrev.includes(searchText) || fullName.includes(searchText);
+                  }}
+                  options={US_STATES.map(state => ({ 
+                    value: state, 
+                    label: state 
+                  }))}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
