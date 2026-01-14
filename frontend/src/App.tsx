@@ -16,7 +16,14 @@ const THEME_STORAGE_KEY = 'shipping_pro_theme';
 
 function App() {
   // Initialize theme from localStorage or default to 'light'
+  // Also check if already set in DOM (from inline script in index.html)
   const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>(() => {
+    // First check if already set in DOM (prevents flicker)
+    const domTheme = document.body.getAttribute('data-theme');
+    if (domTheme === 'dark' || domTheme === 'light') {
+      return domTheme;
+    }
+    // Fallback to localStorage
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     return (saved === 'dark' || saved === 'light') ? saved : 'light';
   });
@@ -48,14 +55,17 @@ function App() {
     localStorage.setItem(STORAGE_KEY, currentPage);
   }, [currentPage]);
 
-  // Initialize body theme class on mount
+  // Ensure theme is set on mount (may already be set by inline script, but ensure consistency)
   useEffect(() => {
-    document.body.setAttribute('data-theme', currentTheme);
-    const root = document.getElementById('root');
-    if (root) {
-      root.setAttribute('data-theme', currentTheme);
+    // Only update if different to avoid unnecessary DOM manipulation
+    if (document.body.getAttribute('data-theme') !== currentTheme) {
+      document.body.setAttribute('data-theme', currentTheme);
+      const root = document.getElementById('root');
+      if (root) {
+        root.setAttribute('data-theme', currentTheme);
+      }
+      document.body.style.colorScheme = currentTheme;
     }
-    document.body.style.colorScheme = currentTheme;
   }, []);
 
   const handleMenuClick = (key: string) => {

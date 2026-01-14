@@ -38,8 +38,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color 0.15s ease, color 0.15s ease;
   font-size: 16px; /* Increased base font size from default 14px */
+  /* Smooth transitions for theme changes after initial load */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 code {
@@ -47,15 +48,20 @@ code {
     monospace;
 }
 
+/* Prevent flash of unstyled content */
+html {
+  background-color: var(--bg-primary);
+}
+
 #root {
   background-color: var(--bg-primary);
   min-height: 100vh;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* Ensure all elements inherit theme immediately */
+/* Smooth transitions for theme-aware elements */
 * {
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 /* Force Ant Design components to respect theme changes immediately */
