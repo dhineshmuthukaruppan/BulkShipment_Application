@@ -211,21 +211,9 @@ class Shipment(models.Model):
         invalid_flags = [
             'invalid_address', 'invalid_ship_from_address', 'invalid_ship_to_address',
             'invalid_ship_from_city', 'invalid_ship_to_city',
-            'invalid_ship_from_pincode', 'invalid_ship_to_pincode',
-            'non_us_address', 'non_us_from_address',  # Non-US addresses are invalid
-            'invalid_ship_to_secondary', 'invalid_ship_from_secondary'  # Invalid apt/suite
+            'invalid_ship_from_pincode', 'invalid_ship_to_pincode'
         ]
-        
-        # Debug logging
-        has_invalid_flags = any(flag in validation_flags for flag in invalid_flags)
-        matching_flags = [flag for flag in validation_flags if flag in invalid_flags]
-        print(f"[STATUS CALC] validation_flags: {validation_flags}")
-        print(f"[STATUS CALC] validation_errors: {self.validation_errors}")
-        print(f"[STATUS CALC] matching invalid flags: {matching_flags}")
-        print(f"[STATUS CALC] has_invalid_flags: {has_invalid_flags}")
-        
         if self.validation_errors or any(flag in validation_flags for flag in invalid_flags):
-            print(f"[STATUS CALC] Returning 'invalid'")
             return 'invalid'
         
         # Check required fields completeness first

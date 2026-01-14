@@ -117,32 +117,9 @@ const Step2Review: React.FC = () => {
     }
   };
 
-  const handleEdit = async (shipment: Shipment, type: 'from' | 'to' | 'package') => {
-    // If editing an invalid record, immediately change status to needs_review
-    if (shipment.status === 'invalid' && (type === 'from' || type === 'to')) {
-      // Optimistically update Redux immediately (UI updates instantly)
-      const optimisticUpdate = {
-        ...shipment,
-        status: 'needs_review' as const
-      };
-      dispatch(updateShipment(optimisticUpdate));
-      setEditingShipment(optimisticUpdate);
-      setEditModalType(type);
-      
-      // Update backend in background (don't wait)
-      shipmentService.updateShipment(shipment.id, {
-        status: 'needs_review'
-      }).then(updatedShipment => {
-        // Update with backend response when it arrives
-        dispatch(updateShipment(updatedShipment));
-      }).catch(error => {
-        console.error('Error updating status:', error);
-        // Keep the optimistic update even if backend fails
-      });
-    } else {
-      setEditingShipment(shipment);
-      setEditModalType(type);
-    }
+  const handleEdit = (shipment: Shipment, type: 'from' | 'to' | 'package') => {
+    setEditingShipment(shipment);
+    setEditModalType(type);
   };
 
   const handleSaveEdit = async (values: any) => {
@@ -178,23 +155,200 @@ const Step2Review: React.FC = () => {
         }
       }
 
-      // Update shipment - backend handles status change automatically
+      // Update shipment first
       const updatedShipment = await shipmentService.updateShipment(editingShipment.id, updateData);
       
-      // Immediately update Redux with backend response (NO VALIDATION - backend already handled it)
+      // Immediately update Redux with the new address values (before validation)
       dispatch(updateShipment(updatedShipment));
       
-      // Close modal immediately
-      setEditModalType(null);
-      setEditingShipment(null);
-      
-      // Show success message
+      // Always validate both addresses when from or to address is edited
       if (editModalType === 'from' || editModalType === 'to') {
-        if (wasInvalid && updatedShipment.status === 'needs_review') {
-          message.success('✓ Address updated. Status changed to Needs Review');
-        } else {
-          message.success('Address updated successfully');
-        }
+        // Set loading state for validation
+        setValidatingAddresses(prev => new Set(prev).add(editingShipment.id));
+        
+        // Close modal immediately so user sees updated values
+        setEditModalType(null);
+        setEditingShipment(null);
+        
+        // Run validation asynchronously without blocking
+        (async () => {
+          try {
+            // Use the already updated shipment data instead of fetching again
+            const fromAddress = {
+              first_name: updatedShipment.from_first_name || '',
+              last_name: updatedShipment.from_last_name || '',
+              address: updatedShipment.from_address || '',
+              address2: updatedShipment.from_address2 || '',
+              city: updatedShipment.from_city || '',
+              state: updatedShipment.from_state || '',
+              zip: updatedShipment.from_zip || '',
+            };
+            
+            const toAddress = {
+              first_name: updatedShipment.to_first_name || '',
+              last_name: updatedShipment.to_last_name || '',
+              address: updatedShipment.to_address || '',
+              address2: updatedShipment.to_address2 || '',
+              city: updatedShipment.to_city || '',
+              state: updatedShipment.to_state || '',
+              zip: updatedShipment.to_zip || '',
+            };
+            
+            // Validate both addresses in a single API call
+            const validationResult = await shipmentService.batchValidateAddresses(fromAddress, toAddress);
+            
+            // Check if both addresses are valid using the new response format
+            // Use from_address_valid and to_address_valid directly from the API response
+            // These are the primary boolean values indicating validity
+            const fromValid = validationResult.from_address_valid === true;
+            const toValid = validationResult.to_address_valid === true;
+            const bothValid = validationResult.both_valid === true || 
+                            validationResult.valid === true ||
+                            (fromValid && toValid);
+            
+            // Get current shipment to access validation_flags
+            const currentShipment = await shipmentService.getShipment(updatedShipment.id);
+            let validationFlags = [...(currentShipment.validation_flags || [])];
+            
+            // List of invalid address flags
+            const invalidAddressFlags = [
+              'invalid_ship_from_address',
+              'invalid_ship_to_address',
+              'invalid_ship_from_city',
+              'invalid_ship_to_city',
+              'invalid_ship_from_pincode',
+              'invalid_ship_to_pincode',
+              'invalid_address',
+            ];
+            
+            // Update validation flags based on validation results
+            if (bothValid) {
+              // Both addresses are valid - remove all invalid address flags
+              validationFlags = validationFlags.filter(flag => !invalidAddressFlags.includes(flag));
+              
+              // Ensure address_reviewed flag is present
+              if (!validationFlags.includes('address_reviewed')) {
+                validationFlags.push('address_reviewed');
+              }
+              
+              // Update status to needs_review and clear invalid flags
+              await shipmentService.updateShipment(updatedShipment.id, { 
+                status: 'needs_review',
+                validation_flags: validationFlags
+              });
+              message.success('Addresses validated. Status updated to needs_review');
+            } else {
+              // At least one address is invalid - update flags accordingly
+              // Always ensure flags are set based on fromValid and toValid
+              
+              // Handle from address
+              if (fromValid) {
+                // From address is valid - remove all from address invalid flags
+                const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
+                validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
+              } else {
+                // From address is invalid - ensure invalid flag is set
+                // Remove existing from address flags first to avoid duplicates
+                const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
+                validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
+                
+                // Add specific invalid flags based on error_details from validation result
+                const fromErrorDetails = validationResult.from_address?.error_details || [];
+                let fromFlagAdded = false;
+                if (fromErrorDetails.length > 0) {
+                  fromErrorDetails.forEach((detail: string) => {
+                    if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_from_address')) {
+                      validationFlags.push('invalid_ship_from_address');
+                      fromFlagAdded = true;
+                    } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_from_city')) {
+                      validationFlags.push('invalid_ship_from_city');
+                      fromFlagAdded = true;
+                    } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_from_pincode')) {
+                      validationFlags.push('invalid_ship_from_pincode');
+                      fromFlagAdded = true;
+                    } else if (detail === 'invalid_address' && !validationFlags.includes('invalid_ship_from_address')) {
+                      // Handle general invalid_address error detail
+                      validationFlags.push('invalid_ship_from_address');
+                      fromFlagAdded = true;
+                    }
+                  });
+                }
+                // Always ensure invalid_ship_from_address flag is set if fromValid is false
+                if (!fromFlagAdded && !validationFlags.includes('invalid_ship_from_address')) {
+                  validationFlags.push('invalid_ship_from_address');
+                }
+              }
+              
+              // Handle to address
+              if (toValid) {
+                // To address is valid - remove all to address invalid flags
+                const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
+                validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
+              } else {
+                // To address is invalid - ensure invalid flag is set
+                // Remove existing to address flags first to avoid duplicates
+                const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
+                validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
+                
+                // Add specific invalid flags based on error_details from validation result
+                const toErrorDetails = validationResult.to_address?.error_details || [];
+                let toFlagAdded = false;
+                if (toErrorDetails.length > 0) {
+                  toErrorDetails.forEach((detail: string) => {
+                    if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_to_address')) {
+                      validationFlags.push('invalid_ship_to_address');
+                      toFlagAdded = true;
+                    } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_to_city')) {
+                      validationFlags.push('invalid_ship_to_city');
+                      toFlagAdded = true;
+                    } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_to_pincode')) {
+                      validationFlags.push('invalid_ship_to_pincode');
+                      toFlagAdded = true;
+                    } else if (detail === 'invalid_address' && !validationFlags.includes('invalid_ship_to_address')) {
+                      // Handle general invalid_address error detail
+                      validationFlags.push('invalid_ship_to_address');
+                      toFlagAdded = true;
+                    }
+                  });
+                }
+                // Always ensure invalid_ship_to_address flag is set if toValid is false
+                if (!toFlagAdded && !validationFlags.includes('invalid_ship_to_address')) {
+                  validationFlags.push('invalid_ship_to_address');
+                }
+              }
+              
+              // Keep status as invalid if any address is invalid
+              await shipmentService.updateShipment(updatedShipment.id, { 
+                status: 'invalid',
+                validation_flags: validationFlags
+              });
+              const invalidParts = [];
+              if (!fromValid) invalidParts.push('Ship From');
+              if (!toValid) invalidParts.push('Ship To');
+              message.warning(`Address validation failed for: ${invalidParts.join(' and ')}. Status remains invalid.`);
+            }
+            
+            // Refresh shipment to get updated status and flags
+            const refreshed = await shipmentService.getShipment(updatedShipment.id);
+            dispatch(updateShipment(refreshed));
+          } catch (validationError: any) {
+            console.error('Error validating addresses:', validationError);
+            // If validation fails, still refresh the shipment
+            const refreshed = await shipmentService.getShipment(updatedShipment.id);
+            dispatch(updateShipment(refreshed));
+            message.warning('Address updated but validation check failed. Please verify addresses manually.');
+          } finally {
+            // Remove loading state
+            setValidatingAddresses(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(editingShipment.id);
+              return newSet;
+            });
+          }
+        })();
+        
+        // Return early - validation happens in background
+        message.success('Address updated successfully. Validating addresses...');
         return;
       } else {
         // Recalculate shipping if package changed
@@ -419,6 +573,16 @@ const Step2Review: React.FC = () => {
 
   // Handle approve action - change status to ready
   const handleApprove = async (shipment: Shipment) => {
+    if (shipment.status === 'ready') {
+      return; // Already approved
+    }
+
+    // Don't allow approval if shipment is invalid
+    if (isShipmentInvalid(shipment)) {
+      message.warning('Cannot approve shipment with invalid address. Please fix the address first.');
+      return;
+    }
+
     try {
       const updated = await shipmentService.updateShipment(shipment.id, { status: 'ready' });
       dispatch(updateShipment(updated));
@@ -436,13 +600,25 @@ const Step2Review: React.FC = () => {
     }
 
     try {
-      // Filter out only already approved shipments (allow all other statuses including invalid)
+      // Filter out already approved shipments and invalid shipments
       const toApprove = shipments.filter(
-        s => selectedShipments.includes(s.id) && s.status !== 'ready'
+        s => selectedShipments.includes(s.id) && s.status !== 'ready' && !isShipmentInvalid(s)
       );
 
+      const invalidShipments = shipments.filter(
+        s => selectedShipments.includes(s.id) && isShipmentInvalid(s)
+      );
+
+      if (invalidShipments.length > 0) {
+        message.warning(
+          `${invalidShipments.length} selected shipment${invalidShipments.length > 1 ? 's have' : ' has'} invalid address${invalidShipments.length > 1 ? 'es' : ''}. Please fix the address${invalidShipments.length > 1 ? 'es' : ''} first.`
+        );
+      }
+
       if (toApprove.length === 0) {
-        message.info('All selected shipments are already approved');
+        if (invalidShipments.length === 0) {
+          message.info('All selected shipments are already approved');
+        }
         return;
       }
 
@@ -626,9 +802,24 @@ const Step2Review: React.FC = () => {
 
   // Helper function to check if shipment is invalid (has invalid status or invalid address flags)
   const isShipmentInvalid = (shipment: Shipment): boolean => {
-    // ONLY check status - if status is "needs_review" or "ready", it's NOT invalid
-    // User can approve records in "needs_review" status even if they have invalid flags
-    return shipment.status === 'invalid';
+    // Check if status is invalid
+    if (shipment.status === 'invalid') {
+      return true;
+    }
+    
+    // Check if there are any invalid address flags
+    const flags = shipment.validation_flags || [];
+    const invalidAddressFlags = [
+      'invalid_ship_from_address',
+      'invalid_ship_to_address',
+      'invalid_ship_from_city',
+      'invalid_ship_to_city',
+      'invalid_ship_from_pincode',
+      'invalid_ship_to_pincode',
+      'invalid_address', // General invalid address flag
+    ];
+    
+    return invalidAddressFlags.some(flag => flags.includes(flag));
   };
 
   // Helper function to check if shipment has a specific validation issue
@@ -652,7 +843,6 @@ const Step2Review: React.FC = () => {
       'invalid_ship_to_city': ['invalid_ship_to_city'],
       'invalid_ship_from_pincode': ['invalid_ship_from_pincode'],
       'invalid_ship_to_pincode': ['invalid_ship_to_pincode'],
-      'non_us_address': ['non_us_address', 'non_us_from_address'],
     };
     
     // Special handling for 'invalid' filter - check if shipment is invalid
@@ -729,10 +919,6 @@ const Step2Review: React.FC = () => {
       invalidShipToPincode: shipments.filter(s => {
         const flags = s.validation_flags || [];
         return flags.includes('invalid_ship_to_pincode');
-      }).length,
-      nonUsAddress: shipments.filter(s => {
-        const flags = s.validation_flags || [];
-        return flags.includes('non_us_address') || flags.includes('non_us_from_address');
       }).length,
     };
   };
@@ -946,9 +1132,12 @@ const Step2Review: React.FC = () => {
       align: 'center',
       render: (_, record) => {
         const isApproved = record.status === 'ready';
+        const isInvalid = isShipmentInvalid(record);
         const isAnimating = animatingShipments.has(record.id);
 
         const handleApproveClick = async () => {
+          if (isApproved || isInvalid) return;
+          
           // Start animation
           setAnimatingShipments(prev => new Set(prev).add(record.id));
           
@@ -1017,17 +1206,20 @@ const Step2Review: React.FC = () => {
               type="default"
               size="small"
               onClick={handleApproveClick}
+              disabled={isApproved || isInvalid}
               className={`approve-button ${isAnimating ? 'approve-button-animating' : ''} ${isApproved ? 'approve-button-approved' : ''}`}
               style={{
                 backgroundColor: isApproved ? '#52c41a' : 'transparent',
-                borderColor: isApproved ? '#52c41a' : '#d9d9d9',
-                color: isApproved ? '#fff' : (theme === 'dark' ? '#fff' : '#262626'),
+                borderColor: isApproved ? '#52c41a' : (isInvalid ? '#ff4d4f' : '#d9d9d9'),
+                color: isApproved ? '#fff' : (isInvalid ? '#ff4d4f' : (theme === 'dark' ? '#fff' : '#262626')),
                 fontWeight: 500,
                 minWidth: isApproved ? '95px' : '85px',
                 height: '32px',
-                cursor: 'pointer',
+                
+                opacity: isInvalid ? 0.6 : 1,
+                cursor: isInvalid ? 'not-allowed' : 'pointer',
               }}
-              title={isApproved ? 'Already approved' : 'Approve shipment'}
+              title={isInvalid ? 'Cannot approve: Address is invalid. Please fix the address first.' : (isApproved ? 'Already approved' : 'Approve shipment')}
             >
               {isApproved ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1445,22 +1637,6 @@ const Step2Review: React.FC = () => {
                 }}
               >
                 Invalid Ship To Pincode ({validationCounts.invalidShipToPincode})
-              </Button>
-            )}
-            {validationCounts.nonUsAddress > 0 && (
-              <Button
-                size="small"
-                danger
-                className={`validation-issue-btn ${filters.validationIssue === 'non_us_address' ? 'validation-issue-btn-active' : ''}`}
-                onClick={() => {
-                  if (filters.validationIssue === 'non_us_address') {
-                    setFilters({ ...filters, validationIssue: undefined });
-                  } else {
-                    setFilters({ ...filters, validationIssue: 'non_us_address' });
-                  }
-                }}
-              >
-                Non-US Address ({validationCounts.nonUsAddress})
               </Button>
             )}
             {Object.values(validationCounts).every(count => count === 0) && (

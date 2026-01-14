@@ -37,7 +37,7 @@ class AddressValidator:
         self.lob_api_key = getattr(settings, 'LOB_API_KEY', '')
         
         # Rate limiting configuration
-        self.rate_limit_delay = 0.05  # 50ms between requests (allows 20 req/sec)
+        self.rate_limit_delay = 0.2  # 200ms between requests
         self.max_retries = 2
         self.timeout = 10
     
@@ -640,16 +640,7 @@ class AddressValidator:
             }
     
     def _validate_smarty(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Validate using SmartyStreets API (free tier: 250/month)
-        
-        Uses US Street Address API with enhanced match detection.
-        Returns detailed error information for invalid addresses including:
-        - Non-US addresses (empty response)
-        - Invalid components (street, city, pincode)
-        - Missing secondary information
-        - Undeliverable addresses
-        """
+        """Validate using SmartyStreets API (free tier: 250/month)"""
         try:
             url = "https://us-street.api.smartystreets.com/street-address"
             params = {
@@ -658,193 +649,100 @@ class AddressValidator:
                 'street': address_dict.get('address', ''),
                 'city': address_dict.get('city', ''),
                 'state': address_dict.get('state', ''),
-                'zipcode': address_dict.get('zip', '').replace('-', '').replace(' ', '')[:5],
-                'match': 'enhanced'  # Get enhanced match information
+                'zipcode': address_dict.get('zip', '').replace('-', '').replace(' ', '')[:5]
             }
             
             response = requests.get(url, params=params, timeout=self.timeout)
             
             if response.status_code == 200:
                 data = response.json()
-                
-                # Empty array [] means address was not found
-                # This typically indicates:
-                # 1. Non-US address (most common for international addresses)
-                # 2. Invalid US address that doesn't exist
-                # 3. Address with incorrect components
-                if not data or len(data) == 0:
+                # SmartyStreets returns empty array [] if address is invalid/not found
+                if data and len(data) > 0:
+                    result = data[0]
+                    components = result.get('components', {})
+                    metadata = result.get('metadata', {})
+                    
+                    # Check if address is deliverable
+                    # SmartyStreets metadata includes precision and RDI (Residential Delivery Indicator)
+                    precision = metadata.get('precision', '')
+                    rdi = metadata.get('rdi', '')
+                    
+                    # If precision is 'Unknown' or RDI indicates undeliverable, mark as invalid
+                    if precision == 'Unknown' or (rdi and rdi not in ['Residential', 'Business', 'Highrise']):
+                        # Analyze which fields might be invalid
+                        error_details = self._analyze_address_fields(address_dict)
+                        
+                        return {
+                            'valid': False,
+                            'api_used': 'SmartyStreets',
+                            'error': 'Address not found or not deliverable',
+                            'error_details': error_details if error_details else ['invalid_address'],
+                            'corrected_address': address_dict,
+                            'corrections': []
+                        }
+                    
+                    corrected = address_dict.copy()
+                    corrections = []
+                    
+                    # Extract delivery line
+                    delivery_line_1 = result.get('delivery_line_1', '')
+                    if delivery_line_1 and delivery_line_1 != address_dict.get('address', ''):
+                        corrections.append('Address standardized')
+                        corrected['address'] = delivery_line_1
+                    
+                    # Extract secondary (address2)
+                    secondary = result.get('secondary', '')
+                    if secondary:
+                        corrected['address2'] = secondary
+                    
+                    # Extract city
+                    city = components.get('city_name', '')
+                    if city and city.upper() != address_dict.get('city', '').upper():
+                        corrections.append('City corrected')
+                        corrected['city'] = city
+                    
+                    # Extract state
+                    state = components.get('state_abbreviation', '')
+                    if state:
+                        corrected['state'] = state.upper()
+                    
+                    # Extract ZIP
+                    zipcode = components.get('zipcode', '')
+                    zipcode_plus4 = components.get('plus4_code', '')
+                    if zipcode:
+                        if zipcode_plus4:
+                            corrected['zip'] = f"{zipcode}-{zipcode_plus4}"
+                        else:
+                            corrected['zip'] = zipcode
+                    
+                    return {
+                        'valid': True,
+                        'corrected_address': corrected,
+                        'corrections': corrections,
+                        'api_used': 'SmartyStreets',
+                        'fallback_used': False
+                    }
+                else:
+                    # Empty response means address was not found/invalid
                     # Analyze which fields might be invalid
                     error_details = self._analyze_address_fields(address_dict)
-                    
-                    # Check if this might be a non-US address
-                    # Non-US addresses often have different format, no state abbreviation, or non-US ZIP
-                    is_likely_non_us = self._is_likely_non_us_address(address_dict)
-                    
-                    if is_likely_non_us:
-                        return {
-                            'valid': False,
-                            'api_used': 'SmartyStreets',
-                            'error': 'Non-US address detected. Only US addresses are supported.',
-                            'error_details': ['non_us_address'] + error_details,
-                            'corrected_address': address_dict,
-                            'corrections': []
-                        }
-                    else:
-                        return {
-                            'valid': False,
-                            'api_used': 'SmartyStreets',
-                            'error': 'Address not found in USPS database',
-                            'error_details': error_details if error_details else ['invalid_address'],
-                            'corrected_address': address_dict,
-                            'corrections': []
-                        }
-                
-                # Process the first result
-                result = data[0]
-                components = result.get('components', {})
-                metadata = result.get('metadata', {})
-                analysis = result.get('analysis', {})
-                
-                # Check DPV (Delivery Point Validation) status
-                dpv_match_code = analysis.get('dpv_match_code', '')
-                dpv_footnotes = analysis.get('dpv_footnotes', '')
-                enhanced_match = analysis.get('enhanced_match', '')
-                precision = metadata.get('precision', '')
-                
-                # CRITICAL: Check for invalid/non-US addresses
-                # Smarty returns results with precision='Unknown' and enhanced_match='none' for:
-                # 1. Non-US addresses (e.g., Indian addresses)
-                # 2. Invalid addresses that don't exist
-                # These should be treated as INVALID
-                if precision == 'Unknown' or enhanced_match == 'none':
-                    # Check if this is likely a non-US address
-                    is_likely_non_us = self._is_likely_non_us_address(address_dict)
-                    error_details = self._analyze_address_fields(address_dict)
-                    
-                    if is_likely_non_us:
-                        return {
-                            'valid': False,
-                            'api_used': 'SmartyStreets',
-                            'error': 'Non-US address detected. Only US addresses are supported.',
-                            'error_details': ['non_us_address'] + error_details,
-                            'corrected_address': address_dict,
-                            'corrections': []
-                        }
-                    else:
-                        return {
-                            'valid': False,
-                            'api_used': 'SmartyStreets',
-                            'error': 'Address not found or invalid',
-                            'error_details': error_details if error_details else ['invalid_address'],
-                            'corrected_address': address_dict,
-                            'corrections': []
-                        }
-                
-                # Analyze deliverability and match quality
-                # dpv_match_code values:
-                # Y = Confirmed (entire address is deliverable)
-                # N = Not Confirmed (address is not deliverable)
-                # S = Confirmed by dropping secondary (apt/suite dropped)
-                # D = Confirmed but missing secondary (apt/suite needed)
-                
-                # Check for non-deliverable or problematic addresses
-                if dpv_match_code == 'N':
-                    # Address is not DPV confirmed (not deliverable)
-                    error_details = self._analyze_smarty_dpv_footnotes(dpv_footnotes, address_dict)
                     
                     return {
                         'valid': False,
                         'api_used': 'SmartyStreets',
-                        'error': 'Address is not deliverable by USPS',
+                        'error': 'Address not found - invalid address',
                         'error_details': error_details if error_details else ['invalid_address'],
                         'corrected_address': address_dict,
                         'corrections': []
                     }
-                
-                # Check enhanced_match for specific issues
-                if enhanced_match == 'unknown-secondary':
-                    # Secondary information (apt/suite) is not recognized
-                    error_details = ['invalid_secondary']
-                    return {
-                        'valid': False,
-                        'api_used': 'SmartyStreets',
-                        'error': 'Apartment/Suite number is not recognized',
-                        'error_details': error_details,
-                        'corrected_address': address_dict,
-                        'corrections': []
-                    }
-                
-                # Address is valid - extract corrected/standardized data
-                corrected = address_dict.copy()
-                corrections = []
-                
-                # Extract delivery line
-                delivery_line_1 = result.get('delivery_line_1', '')
-                if delivery_line_1:
-                    if delivery_line_1.upper() != address_dict.get('address', '').upper():
-                        corrections.append('Address standardized')
-                    corrected['address'] = delivery_line_1
-                
-                # Extract secondary (address2) if present
-                delivery_line_2 = result.get('delivery_line_2', '')
-                if delivery_line_2:
-                    corrected['address2'] = delivery_line_2
-                
-                # Extract city
-                city = components.get('city_name', '')
-                if city:
-                    if city.upper() != address_dict.get('city', '').upper():
-                        corrections.append('City corrected')
-                    corrected['city'] = city
-                
-                # Extract state
-                state = components.get('state_abbreviation', '')
-                if state:
-                    if state.upper() != address_dict.get('state', '').upper():
-                        corrections.append('State corrected')
-                    corrected['state'] = state.upper()
-                
-                # Extract ZIP+4
-                zipcode = components.get('zipcode', '')
-                zipcode_plus4 = components.get('plus4_code', '')
-                if zipcode:
-                    if zipcode_plus4:
-                        new_zip = f"{zipcode}-{zipcode_plus4}"
-                    else:
-                        new_zip = zipcode
-                    
-                    if new_zip != address_dict.get('zip', ''):
-                        corrections.append('ZIP code standardized')
-                    corrected['zip'] = new_zip
-                
-                # Add warning if secondary is missing but required
-                warnings = []
-                if dpv_match_code == 'D' or enhanced_match == 'missing-secondary':
-                    warnings.append('Secondary address (apt/suite) may be required for delivery')
-                
-                return {
-                    'valid': True,
-                    'corrected_address': corrected,
-                    'corrections': corrections,
-                    'warnings': warnings,
-                    'api_used': 'SmartyStreets',
-                    'fallback_used': False,
-                    'metadata': {
-                        'dpv_match_code': dpv_match_code,
-                        'enhanced_match': enhanced_match,
-                        'precision': metadata.get('precision', ''),
-                        'rdi': metadata.get('rdi', '')
-                    }
-                }
-                    
             elif response.status_code == 401:
                 logger.warning("SmartyStreets API authentication failed")
                 error_details = self._analyze_address_fields(address_dict)
                 return {
                     'valid': False, 
                     'api_used': 'SmartyStreets', 
-                    'error': 'Authentication failed - check API credentials',
-                    'error_details': error_details if error_details else ['api_auth_error']
+                    'error': 'Authentication failed',
+                    'error_details': error_details if error_details else ['invalid_address']
                 }
             elif response.status_code == 402:
                 logger.warning("SmartyStreets API quota exceeded")
@@ -852,8 +750,8 @@ class AddressValidator:
                 return {
                     'valid': False, 
                     'api_used': 'SmartyStreets', 
-                    'error': 'API quota exceeded',
-                    'error_details': error_details if error_details else ['api_quota_exceeded']
+                    'error': 'Quota exceeded',
+                    'error_details': error_details if error_details else ['invalid_address']
                 }
                 
         except requests.exceptions.Timeout:
@@ -862,8 +760,8 @@ class AddressValidator:
             return {
                 'valid': False, 
                 'api_used': 'SmartyStreets', 
-                'error': 'Request timeout',
-                'error_details': error_details if error_details else ['api_timeout']
+                'error': 'Timeout',
+                'error_details': error_details if error_details else ['invalid_address']
             }
         except requests.exceptions.RequestException as e:
             logger.error(f"SmartyStreets API request error: {str(e)}")
@@ -871,8 +769,8 @@ class AddressValidator:
             return {
                 'valid': False, 
                 'api_used': 'SmartyStreets', 
-                'error': f'Network error: {str(e)}',
-                'error_details': error_details if error_details else ['api_network_error']
+                'error': str(e),
+                'error_details': error_details if error_details else ['invalid_address']
             }
         except Exception as e:
             logger.error(f"SmartyStreets validation error: {str(e)}")
@@ -881,119 +779,9 @@ class AddressValidator:
             return {
                 'valid': False, 
                 'api_used': 'SmartyStreets', 
-                'error': f'Validation error: {str(e)}',
-                'error_details': error_details if error_details else ['validation_error']
+                'error': 'Unknown error',
+                'error_details': error_details if error_details else ['invalid_address']
             }
-    
-    def _is_likely_non_us_address(self, address_dict: Dict[str, Any]) -> bool:
-        """
-        Detect if an address is likely a non-US address based on patterns.
-        
-        Indicators of non-US addresses:
-        - State is not a valid US state code
-        - ZIP code doesn't match US format (5 or 9 digits)
-        - Common international keywords in address
-        """
-        # Check state - US states are 2-letter codes
-        state = address_dict.get('state', '').strip().upper()
-        us_states = {
-            'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-            'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-            'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-            'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-            'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
-            'DC', 'PR', 'VI', 'GU', 'AS', 'MP'
-        }
-        
-        # If state is provided and not a US state, likely non-US
-        if state and state not in us_states and len(state) == 2:
-            return True
-        
-        # If state is longer than 2 characters, likely non-US (full province name)
-        if state and len(state) > 2:
-            return True
-        
-        # Check ZIP code format - US ZIP is 5 or 9 digits (with optional hyphen)
-        zip_code = address_dict.get('zip', '').strip()
-        if zip_code:
-            # Remove hyphens and spaces
-            zip_digits = re.sub(r'[^0-9]', '', zip_code)
-            # US ZIP is exactly 5 or 9 digits
-            if len(zip_digits) not in [5, 9]:
-                return True
-            # Check if ZIP contains letters (non-US postal codes often have letters)
-            if re.search(r'[A-Za-z]', zip_code):
-                return True
-        
-        # Check for common international keywords in address or city
-        international_keywords = [
-            'province', 'postal code', 'postcode', 'canada', 'mexico',
-            'india', 'uk', 'england', 'australia', 'germany', 'france'
-        ]
-        
-        address_text = ' '.join([
-            address_dict.get('address', ''),
-            address_dict.get('city', ''),
-            address_dict.get('state', '')
-        ]).lower()
-        
-        for keyword in international_keywords:
-            if keyword in address_text:
-                return True
-        
-        return False
-    
-    def _analyze_smarty_dpv_footnotes(self, dpv_footnotes: str, address_dict: Dict[str, Any]) -> List[str]:
-        """
-        Analyze Smarty DPV footnotes to determine specific validation errors.
-        
-        Common DPV footnotes:
-        - AA: Address matched to ZIP+4 file
-        - A1: Address not matched to ZIP+4 file
-        - BB: Entire address matched to ZIP+4 file
-        - CC: Primary number matched, secondary not matched
-        - N1: Secondary number missing
-        - M1: Primary number missing
-        - M3: Primary number invalid
-        - P1: PO Box/RR/HC Box number missing
-        - P3: PO Box/RR/HC Box number invalid
-        - F1: Military or diplomatic address
-        - G1: General delivery address
-        - U1: Unique ZIP code
-        - RR: Confirmed address with private mailbox (PMB)
-        """
-        error_details = []
-        
-        if not dpv_footnotes:
-            # No specific footnotes, analyze address fields generically
-            return self._analyze_address_fields(address_dict)
-        
-        # Check for specific error patterns
-        if 'M1' in dpv_footnotes or 'M3' in dpv_footnotes:
-            # Primary number (street number) missing or invalid
-            error_details.append('invalid_street')
-        
-        if 'N1' in dpv_footnotes:
-            # Secondary number (apt/suite) missing
-            error_details.append('missing_secondary')
-        
-        if 'CC' in dpv_footnotes:
-            # Secondary number doesn't match
-            error_details.append('invalid_secondary')
-        
-        if 'P1' in dpv_footnotes or 'P3' in dpv_footnotes:
-            # PO Box number issue
-            error_details.append('invalid_po_box')
-        
-        if 'A1' in dpv_footnotes:
-            # Address not in ZIP+4 file
-            error_details.append('invalid_address')
-        
-        # If no specific error detected, do generic analysis
-        if not error_details:
-            error_details = self._analyze_address_fields(address_dict)
-        
-        return error_details
     
     def _validate_lob(self, address_dict: Dict[str, Any]) -> Dict[str, Any]:
         """Validate using Lob Address Verification API (free tier: 10,000/month)"""
