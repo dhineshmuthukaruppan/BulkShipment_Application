@@ -1137,7 +1137,7 @@ const Step2Review: React.FC = () => {
                 fontWeight: 500,
                 minWidth: isApproved ? '95px' : '85px',
                 height: '32px',
-                height: '32px',
+                
                 opacity: isInvalid ? 0.6 : 1,
                 cursor: isInvalid ? 'not-allowed' : 'pointer',
               }}
