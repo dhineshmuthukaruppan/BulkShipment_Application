@@ -700,7 +700,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         from_valid = results.get('from_address', {}).get('valid', True) if from_address else True
         to_valid = results.get('to_address', {}).get('valid', True) if to_address else True
         
+        # Add individual validation statuses
+        results['from_address_valid'] = from_valid
+        results['to_address_valid'] = to_valid
         results['both_valid'] = from_valid and to_valid
+        results['valid'] = from_valid and to_valid  # Overall valid status
         results['overall_status'] = 'valid' if results['both_valid'] else 'invalid'
         
         return Response(results, status=status.HTTP_200_OK)

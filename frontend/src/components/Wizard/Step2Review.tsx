@@ -161,8 +161,8 @@ const Step2Review: React.FC = () => {
       // Immediately update Redux with the new address values (before validation)
       dispatch(updateShipment(updatedShipment));
       
-      // If status was invalid and user updated from or to address, validate both addresses
-      if (wasInvalid && (editModalType === 'from' || editModalType === 'to')) {
+      // Always validate both addresses when from or to address is edited
+      if (editModalType === 'from' || editModalType === 'to') {
         // Set loading state for validation
         setValidatingAddresses(prev => new Set(prev).add(editingShipment.id));
         
@@ -197,10 +197,14 @@ const Step2Review: React.FC = () => {
             // Validate both addresses in a single API call
             const validationResult = await shipmentService.batchValidateAddresses(fromAddress, toAddress);
             
-            // Check if both addresses are valid
-            const bothValid = validationResult.both_valid === true;
-            const fromValid = validationResult.from_address?.valid === true;
-            const toValid = validationResult.to_address?.valid === true;
+            // Check if both addresses are valid using the new response format
+            // Use from_address_valid and to_address_valid directly from the API response
+            // These are the primary boolean values indicating validity
+            const fromValid = validationResult.from_address_valid === true;
+            const toValid = validationResult.to_address_valid === true;
+            const bothValid = validationResult.both_valid === true || 
+                            validationResult.valid === true ||
+                            (fromValid && toValid);
             
             // Get current shipment to access validation_flags
             const currentShipment = await shipmentService.getShipment(updatedShipment.id);
@@ -241,19 +245,34 @@ const Step2Review: React.FC = () => {
                 const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
                 validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
               } else {
+                // From address is invalid - set the invalid flag
+                // Remove existing from address flags first to avoid duplicates
+                const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
+                validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
+                
                 // Add specific invalid flags based on error_details from validation result
                 const fromErrorDetails = validationResult.from_address?.error_details || [];
-                fromErrorDetails.forEach((detail: string) => {
-                  if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_from_address')) {
-                    validationFlags.push('invalid_ship_from_address');
-                  } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_from_city')) {
-                    validationFlags.push('invalid_ship_from_city');
-                  } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_from_pincode')) {
-                    validationFlags.push('invalid_ship_from_pincode');
-                  }
-                });
-                // If no specific error details, add general invalid flag
-                if (fromErrorDetails.length === 0 && !validationFlags.includes('invalid_ship_from_address')) {
+                let fromFlagAdded = false;
+                if (fromErrorDetails.length > 0) {
+                  fromErrorDetails.forEach((detail: string) => {
+                    if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_from_address')) {
+                      validationFlags.push('invalid_ship_from_address');
+                      fromFlagAdded = true;
+                    } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_from_city')) {
+                      validationFlags.push('invalid_ship_from_city');
+                      fromFlagAdded = true;
+                    } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_from_pincode')) {
+                      validationFlags.push('invalid_ship_from_pincode');
+                      fromFlagAdded = true;
+                    } else if (detail === 'invalid_address' && !validationFlags.includes('invalid_ship_from_address')) {
+                      // Handle general invalid_address error detail
+                      validationFlags.push('invalid_ship_from_address');
+                      fromFlagAdded = true;
+                    }
+                  });
+                }
+                // If no flag was added (either no error_details or none matched), add general invalid flag
+                if (!fromFlagAdded && !validationFlags.includes('invalid_ship_from_address')) {
                   validationFlags.push('invalid_ship_from_address');
                 }
               }
@@ -263,19 +282,34 @@ const Step2Review: React.FC = () => {
                 const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
                 validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
               } else {
+                // To address is invalid - set the invalid flag
+                // Remove existing to address flags first to avoid duplicates
+                const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
+                validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
+                
                 // Add specific invalid flags based on error_details from validation result
                 const toErrorDetails = validationResult.to_address?.error_details || [];
-                toErrorDetails.forEach((detail: string) => {
-                  if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_to_address')) {
-                    validationFlags.push('invalid_ship_to_address');
-                  } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_to_city')) {
-                    validationFlags.push('invalid_ship_to_city');
-                  } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_to_pincode')) {
-                    validationFlags.push('invalid_ship_to_pincode');
-                  }
-                });
-                // If no specific error details, add general invalid flag
-                if (toErrorDetails.length === 0 && !validationFlags.includes('invalid_ship_to_address')) {
+                let toFlagAdded = false;
+                if (toErrorDetails.length > 0) {
+                  toErrorDetails.forEach((detail: string) => {
+                    if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_to_address')) {
+                      validationFlags.push('invalid_ship_to_address');
+                      toFlagAdded = true;
+                    } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_to_city')) {
+                      validationFlags.push('invalid_ship_to_city');
+                      toFlagAdded = true;
+                    } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_to_pincode')) {
+                      validationFlags.push('invalid_ship_to_pincode');
+                      toFlagAdded = true;
+                    } else if (detail === 'invalid_address' && !validationFlags.includes('invalid_ship_to_address')) {
+                      // Handle general invalid_address error detail
+                      validationFlags.push('invalid_ship_to_address');
+                      toFlagAdded = true;
+                    }
+                  });
+                }
+                // If no flag was added (either no error_details or none matched), add general invalid flag
+                if (!toFlagAdded && !validationFlags.includes('invalid_ship_to_address')) {
                   validationFlags.push('invalid_ship_to_address');
                 }
               }
@@ -799,6 +833,7 @@ const Step2Review: React.FC = () => {
       'missing_pincode': ['missing_pincode'],
       'missing_weight': ['missing_weight'],
       'missing_dimensions': ['missing_dimensions'],
+      'invalid': ['invalid'], // Special case - will be handled separately
       'invalid_ship_from_address': ['invalid_ship_from_address'],
       'invalid_ship_to_address': ['invalid_ship_to_address'],
       'invalid_ship_from_city': ['invalid_ship_from_city'],
@@ -806,6 +841,11 @@ const Step2Review: React.FC = () => {
       'invalid_ship_from_pincode': ['invalid_ship_from_pincode'],
       'invalid_ship_to_pincode': ['invalid_ship_to_pincode'],
     };
+    
+    // Special handling for 'invalid' filter - check if shipment is invalid
+    if (issue === 'invalid') {
+      return isShipmentInvalid(shipment);
+    }
     
     const relatedFlags = issueMap[issue] || [issue];
     return relatedFlags.some(flag => flags.includes(flag));
@@ -849,6 +889,9 @@ const Step2Review: React.FC = () => {
       missingDimensions: shipments.filter(s => {
         const flags = s.validation_flags || [];
         return flags.includes('missing_dimensions');
+      }).length,
+      invalid: shipments.filter(s => {
+        return isShipmentInvalid(s);
       }).length,
       invalidShipFromAddress: shipments.filter(s => {
         const flags = s.validation_flags || [];
@@ -962,9 +1005,25 @@ const Step2Review: React.FC = () => {
       showSorterTooltip: false,
       render: (_, record) => {
         const isValidating = validatingAddresses.has(record.id);
+        const flags = record.validation_flags || [];
+        // Check specifically for invalid from address flags only
+        // Only show tag if there are specific from address invalid flags
+        const isFromAddressInvalid = flags.some(flag => 
+          ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'].includes(flag)
+        );
+        
         return (
           <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '13px', position: 'relative' }}>
-            {formatAddress(record, 'from')}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {formatAddress(record, 'from')}
+              </div>
+              {isFromAddressInvalid && (
+                <Tag color="error" style={{ fontSize: '10px', padding: '2px 6px', margin: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  Invalid
+                </Tag>
+              )}
+            </div>
             {isValidating && (
               <Spin size="small" style={{ position: 'absolute', top: 0, right: 0 }} />
             )}
@@ -985,9 +1044,25 @@ const Step2Review: React.FC = () => {
       showSorterTooltip: false,
       render: (_, record) => {
         const isValidating = validatingAddresses.has(record.id);
+        const flags = record.validation_flags || [];
+        // Check specifically for invalid to address flags (not general invalid_address or status)
+        // Only show tag if there are specific to address invalid flags
+        const isToAddressInvalid = flags.some(flag => 
+          ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'].includes(flag)
+        );
+        
         return (
           <div style={{ whiteSpace: 'pre-line', lineHeight: '1.6', fontSize: '13px', position: 'relative' }}>
-            {formatAddress(record, 'to')}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {formatAddress(record, 'to')}
+              </div>
+              {isToAddressInvalid && (
+                <Tag color="error" style={{ fontSize: '10px', padding: '2px 6px', margin: 0, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  Invalid
+                </Tag>
+              )}
+            </div>
             {isValidating && (
               <Spin size="small" style={{ position: 'absolute', top: 0, right: 0 }} />
             )}
@@ -1453,6 +1528,21 @@ const Step2Review: React.FC = () => {
                 }}
               >
                 Missing Dimensions ({validationCounts.missingDimensions})
+              </Button>
+            )}
+            {validationCounts.invalid > 0 && (
+              <Button
+                size="small"
+                className={`validation-issue-btn ${filters.validationIssue === 'invalid' ? 'validation-issue-btn-active' : ''}`}
+                onClick={() => {
+                  if (filters.validationIssue === 'invalid') {
+                    setFilters({ ...filters, validationIssue: undefined });
+                  } else {
+                    setFilters({ ...filters, validationIssue: 'invalid' });
+                  }
+                }}
+              >
+                Invalid ({validationCounts.invalid})
               </Button>
             )}
             {validationCounts.invalidShipFromAddress > 0 && (
