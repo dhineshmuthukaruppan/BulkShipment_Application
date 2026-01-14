@@ -49,7 +49,7 @@ services:
         sync: false  # Set this in Render dashboard
 
   # PostgreSQL Database
-  - type: pgsql
+  - type: postgres
     name: bulk-shipping-db
     plan: free
     databaseName: shipping_db
