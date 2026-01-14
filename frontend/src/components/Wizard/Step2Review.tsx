@@ -239,13 +239,15 @@ const Step2Review: React.FC = () => {
               message.success('Addresses validated. Status updated to needs_review');
             } else {
               // At least one address is invalid - update flags accordingly
-              // Remove flags for addresses that are now valid
+              // Always ensure flags are set based on fromValid and toValid
+              
+              // Handle from address
               if (fromValid) {
-                // Remove specific from address invalid flags
+                // From address is valid - remove all from address invalid flags
                 const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
                 validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
               } else {
-                // From address is invalid - set the invalid flag
+                // From address is invalid - ensure invalid flag is set
                 // Remove existing from address flags first to avoid duplicates
                 const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
                 validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
@@ -271,18 +273,19 @@ const Step2Review: React.FC = () => {
                     }
                   });
                 }
-                // If no flag was added (either no error_details or none matched), add general invalid flag
+                // Always ensure invalid_ship_from_address flag is set if fromValid is false
                 if (!fromFlagAdded && !validationFlags.includes('invalid_ship_from_address')) {
                   validationFlags.push('invalid_ship_from_address');
                 }
               }
               
+              // Handle to address
               if (toValid) {
-                // Remove specific to address invalid flags
+                // To address is valid - remove all to address invalid flags
                 const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
                 validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
               } else {
-                // To address is invalid - set the invalid flag
+                // To address is invalid - ensure invalid flag is set
                 // Remove existing to address flags first to avoid duplicates
                 const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
                 validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
@@ -308,7 +311,7 @@ const Step2Review: React.FC = () => {
                     }
                   });
                 }
-                // If no flag was added (either no error_details or none matched), add general invalid flag
+                // Always ensure invalid_ship_to_address flag is set if toValid is false
                 if (!toFlagAdded && !validationFlags.includes('invalid_ship_to_address')) {
                   validationFlags.push('invalid_ship_to_address');
                 }
@@ -325,7 +328,7 @@ const Step2Review: React.FC = () => {
               message.warning(`Address validation failed for: ${invalidParts.join(' and ')}. Status remains invalid.`);
             }
             
-            // Refresh shipment to get updated status
+            // Refresh shipment to get updated status and flags
             const refreshed = await shipmentService.getShipment(updatedShipment.id);
             dispatch(updateShipment(refreshed));
           } catch (validationError: any) {
