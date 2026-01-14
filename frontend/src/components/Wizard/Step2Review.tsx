@@ -863,14 +863,18 @@ const Step2Review: React.FC = () => {
         // Check if addresses have validation errors
         const hasFromError = flags.some(f => f.startsWith('invalid_ship_from'));
         const hasToError = flags.some(f => f.startsWith('invalid_ship_to'));
-        const hasValidationErrors = hasFromError || hasToError || !!validationError;
+        // Check if validationError exists and is not empty
+        const hasValidationError = validationError && validationError.trim().length > 0;
+        const hasValidationErrors = hasFromError || hasToError || hasValidationError;
         
-        // Check if addresses are valid (no validation error and not invalid status)
-        const addressesValid = !hasValidationErrors && status !== 'invalid' && !validationError;
+        // Check if addresses are valid (no validation errors)
+        // Show "Valid" if there are no address validation errors, regardless of status
+        // Status might be 'invalid' for other reasons (missing package, etc.)
+        const addressesValid = !hasValidationErrors;
         
         // Parse validation messages if they exist
         const validationMessages: string[] = [];
-        if (validationError) {
+        if (hasValidationError) {
           // Split by newline to get separate messages
           const lines = validationError.split('\n').filter(p => p.trim());
           validationMessages.push(...lines.map(p => p.trim()));

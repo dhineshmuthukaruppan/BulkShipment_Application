@@ -38,7 +38,7 @@ A comprehensive web application for bulk shipping label creation with advanced w
 
 ### ⚠️ IMPORTANT: PostgreSQL is Required
 
-This application uses **PostgreSQL only** (no SQLite). You must install and configure PostgreSQL before running the application.
+This application uses **PostgreSQL**. You must install and configure PostgreSQL before running the application.
 
 **See `SETUP_GUIDE_FOR_NEW_DEVELOPERS.md` for complete setup instructions.**
 
@@ -86,7 +86,12 @@ pip install -r requirements.txt
 6. **Create `.env` file** (Required):
 ```bash
 cp .env.example .env
-# Edit .env with your database credentials
+# Edit .env with your PostgreSQL database credentials:
+# DB_NAME=shipping_db
+# DB_USER=shipping_user
+# DB_PASSWORD=shipping_secure_pass_2026
+# DB_HOST=localhost
+# DB_PORT=5432
 ```
 
 7. Run migrations:
@@ -339,7 +344,7 @@ Returns complete zone-based rate tables for all providers and services.
 - **Backend**: Django REST Framework, Python
 - **Frontend**: React, TypeScript, Ant Design
 - **State Management**: Redux Toolkit
-- **Database**: SQLite (development)
+- **Database**: PostgreSQL (required)
 
 ## Shipping Services
 

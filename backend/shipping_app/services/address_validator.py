@@ -157,6 +157,7 @@ class AddressValidator:
                 normalized[key] = value.strip()
             else:
                 normalized[key] = value
+        
         return normalized
     
     def _check_rate_limit(self, api_name: str) -> bool:
@@ -351,7 +352,7 @@ class AddressValidator:
                 return {
                     'valid': False, 
                     'api_used': 'USPS Addresses 3.0', 
-                    'error': 'Address not found',
+                    'error': 'Address not found. Please verify the address is correct and is a valid US address.',
                     'error_details': error_details if error_details else ['invalid_address']
                 }
             else:
@@ -603,10 +604,15 @@ class AddressValidator:
                 else:
                     # Address not found or invalid
                     error_details = self._analyze_address_fields(address_dict)
+                    google_status = data.get('status', 'Unknown error')
+                    if google_status == 'ZERO_RESULTS':
+                        error_msg = 'Address not found. Please verify the address is correct and is a valid US address.'
+                    else:
+                        error_msg = google_status
                     return {
                         'valid': False, 
                         'api_used': 'Google Maps', 
-                        'error': data.get('status', 'Unknown error'),
+                        'error': error_msg,
                         'error_details': error_details if error_details else ['invalid_address']
                     }
                     
@@ -652,10 +658,15 @@ class AddressValidator:
                 'zipcode': address_dict.get('zip', '').replace('-', '').replace(' ', '')[:5]
             }
             
+            # Log the request for debugging
+            logger.debug(f"SmartyStreets API request: {params}")
+            
             response = requests.get(url, params=params, timeout=self.timeout)
             
             if response.status_code == 200:
                 data = response.json()
+                logger.debug(f"SmartyStreets API response: {data}")
+                
                 # SmartyStreets returns empty array [] if address is invalid/not found
                 if data and len(data) > 0:
                     result = data[0]
@@ -667,8 +678,17 @@ class AddressValidator:
                     precision = metadata.get('precision', '')
                     rdi = metadata.get('rdi', '')
                     
-                    # If precision is 'Unknown' or RDI indicates undeliverable, mark as invalid
-                    if precision == 'Unknown' or (rdi and rdi not in ['Residential', 'Business', 'Highrise']):
+                    logger.debug(f"SmartyStreets precision: {precision}, RDI: {rdi}")
+                    
+                    # Valid precision values: 'Zip9', 'Zip8', 'Zip7', 'Zip6', 'Zip5', 'Zip4', 'Zip3', 'Zip2', 'Zip1'
+                    # Invalid precision: 'Unknown' - means address couldn't be matched
+                    # RDI can be 'Unknown' for valid addresses, so we only check precision
+                    # If SmartyStreets returns a result with non-Unknown precision, the address is valid
+                    
+                    # Only reject if precision is 'Unknown' (address couldn't be matched)
+                    # RDI being 'Unknown' doesn't mean the address is invalid
+                    if precision == 'Unknown':
+                        logger.warning(f"SmartyStreets returned Unknown precision for address: {address_dict}")
                         # Analyze which fields might be invalid
                         error_details = self._analyze_address_fields(address_dict)
                         
@@ -680,6 +700,9 @@ class AddressValidator:
                             'corrected_address': address_dict,
                             'corrections': []
                         }
+                    
+                    # If we have a valid precision (not 'Unknown'), the address is valid
+                    # SmartyStreets found and validated the address
                     
                     corrected = address_dict.copy()
                     corrections = []
@@ -726,11 +749,12 @@ class AddressValidator:
                     # Empty response means address was not found/invalid
                     # Analyze which fields might be invalid
                     error_details = self._analyze_address_fields(address_dict)
+                    error_msg = 'Address not found. Please verify the address is correct and is a valid US address.'
                     
                     return {
                         'valid': False,
                         'api_used': 'SmartyStreets',
-                        'error': 'Address not found - invalid address',
+                        'error': error_msg,
                         'error_details': error_details if error_details else ['invalid_address'],
                         'corrected_address': address_dict,
                         'corrections': []

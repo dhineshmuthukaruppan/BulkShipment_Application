@@ -252,11 +252,13 @@ const AddressModal: React.FC<AddressModalProps> = ({
                 const searchText = input.toLowerCase();
                 const label = String(option?.label || '').toLowerCase();
                 const value = String(option?.value || '').toLowerCase();
-                return label.includes(searchText) || value.includes(searchText);
+                const stateName = String(option?.stateName || '').toLowerCase();
+                return label.includes(searchText) || value.includes(searchText) || stateName.includes(searchText);
               }}
               options={US_STATES.map(state => ({ 
-                label: `${state.name} (${state.code})`, 
-                value: state.code 
+                label: state.code, 
+                value: state.code,
+                stateName: state.name
               }))}
               aria-label="State"
               aria-required="true"

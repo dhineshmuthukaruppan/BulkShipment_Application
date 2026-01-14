@@ -211,13 +211,16 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                                     validation_flags.append('invalid_ship_from_address')
                             
                             row_data['validation_flags'] = validation_flags
-                            # Set address validation error for from address
+                            # Store validation error in the same format as validate_all_addresses endpoint
                             error_message = from_validation_result.get('error', 'Address could not be validated')
-                            row_data['from_address_validation_error'] = error_message
-                            # Add to validation errors
-                            validation_errors = row_data.get('validation_errors', [])
-                            validation_errors.append(f"Invalid ship from address: {error_message}")
-                            row_data['validation_errors'] = validation_errors
+                            # Initialize address_validation_error if it doesn't exist
+                            if 'address_validation_error' not in row_data:
+                                row_data['address_validation_error'] = ''
+                            # Add ship from error
+                            if row_data['address_validation_error']:
+                                row_data['address_validation_error'] += f"\nShip From: {error_message}"
+                            else:
+                                row_data['address_validation_error'] = f"Ship From: {error_message}"
                     
                     # Validate recipient address
                     to_address = {
@@ -271,7 +274,15 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                         row_data['address_validated'] = False
                         row_data['address_validation_api_used'] = validation_result.get('api_used', 'Unknown')
                         error_message = validation_result.get('error', 'Address could not be validated')
-                        row_data['address_validation_error'] = error_message
+                        # Store validation error in the same format as validate_all_addresses endpoint
+                        # Initialize address_validation_error if it doesn't exist
+                        if 'address_validation_error' not in row_data:
+                            row_data['address_validation_error'] = ''
+                        # Add ship to error (combine with ship from error if exists)
+                        if row_data['address_validation_error']:
+                            row_data['address_validation_error'] += f"\nShip To: {error_message}"
+                        else:
+                            row_data['address_validation_error'] = f"Ship To: {error_message}"
                         # Add to validation errors
                         validation_errors = row_data.get('validation_errors', [])
                         validation_errors.append(f"Invalid address: {error_message}")

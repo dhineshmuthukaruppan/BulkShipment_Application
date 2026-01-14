@@ -196,15 +196,16 @@ const Master: React.FC<MasterProps> = () => {
       // Determine address type based on active tab
       const addressType = activeTab === 'ship-to' ? 'to' : 'from';
       
-      // For ship-from addresses, auto-generate name if not provided
+      // Auto-generate name if not provided (for both ship-from and ship-to)
       let addressData = { ...values, address_type: addressType };
-      if (addressType === 'from' && !addressData.name) {
+      if (!addressData.name) {
         // Generate name from address components
         const city = addressData.city || '';
         const state = addressData.state || '';
         const addressLine = addressData.address || '';
         // Use first part of address or city/state as name
-        addressData.name = addressLine.split(',')[0].trim() || `${city}, ${state}`.trim() || 'Ship From Address';
+        const addressTypeLabel = addressType === 'from' ? 'Ship From' : 'Ship To';
+        addressData.name = addressLine.split(',')[0].trim() || `${city}, ${state}`.trim() || `${addressTypeLabel} Address`;
       }
       
       if (editingAddress) {
@@ -800,24 +801,15 @@ const Master: React.FC<MasterProps> = () => {
         >
           <Row gutter={16}>
             {activeTab === 'ship-to' && (
-              <Col span={12}>
+              <Col span={24}>
                 <Form.Item
                   name="name"
                   label="Address Name"
-                  rules={[{ required: true, message: 'Please enter address name' }]}
                 >
-                  <Input placeholder="e.g., Main Warehouse" />
+                  <Input placeholder="e.g., Main Warehouse (optional - will be auto-generated if not provided)" />
                 </Form.Item>
               </Col>
             )}
-            <Col span={activeTab === 'ship-to' ? 12 : 24}>
-              <Form.Item name="is_default" valuePropName="checked" label=" ">
-                <Space>
-                  <Switch />
-                  <span>Set as Default Address</span>
-                </Space>
-              </Form.Item>
-            </Col>
           </Row>
 
           <Row gutter={16}>
@@ -875,7 +867,8 @@ const Master: React.FC<MasterProps> = () => {
                     const searchText = input.toLowerCase();
                     const label = String(option?.label || '').toLowerCase();
                     const value = String(option?.value || '').toLowerCase();
-                    return label.includes(searchText) || value.includes(searchText);
+                    const stateName = String(option?.stateName || '').toLowerCase();
+                    return label.includes(searchText) || value.includes(searchText) || stateName.includes(searchText);
                   }}
                   options={[
                     // US States as per PRD Appendix B: AL, AK, AZ, AR, CA, CO, CT, DE, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, MD, MA, MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NY, NC, ND, OH, OK, OR, PA, RI, SC, SD, TN, TX, UT, VT, VA, WA, WV, WI, WY
@@ -933,8 +926,9 @@ const Master: React.FC<MasterProps> = () => {
                     { code: 'DC', name: 'District of Columbia' },
                     { code: 'PR', name: 'Puerto Rico' },
                   ].map(state => ({ 
-                    label: `${state.name} (${state.code})`, 
-                    value: state.code 
+                    label: state.code, 
+                    value: state.code,
+                    stateName: state.name
                   }))}
                 />
               </Form.Item>
