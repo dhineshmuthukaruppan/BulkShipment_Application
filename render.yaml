@@ -42,7 +42,7 @@ services:
           name: bulk-shipping-db
           property: port
       - key: CORS_ALLOWED_ORIGINS
-        value: https://bulk-shipping-frontend.vercel.app,https://bulk-shipping-frontend.netlify.app
+        value: https://frontend-phi-three-66.vercel.app,https://frontend-o94p5b365-dhineshmuthukaruppan-9911s-projects.vercel.app,https://frontend-h31p0mom3-dhineshmuthukaruppan-9911s-projects.vercel.app
       - key: SMARTY_AUTH_ID
         sync: false  # Set this in Render dashboard
       - key: SMARTY_AUTH_TOKEN

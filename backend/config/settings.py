@@ -285,7 +285,12 @@ LOB_API_KEY = os.getenv('LOB_API_KEY', '')
 
 # Production Settings
 # Detect if running in production (Render, Railway, etc.)
-IS_PRODUCTION = os.getenv('RENDER', '').lower() == 'true' or os.getenv('RAILWAY_ENVIRONMENT', '').lower() == 'production' or os.getenv('DJANGO_ENV', '').lower() == 'production'
+IS_PRODUCTION = (
+    os.getenv('RENDER', '').lower() == 'true' or 
+    os.getenv('RENDER_SERVICE_NAME') is not None or  # Render sets this automatically
+    os.getenv('RAILWAY_ENVIRONMENT', '').lower() == 'production' or 
+    os.getenv('DJANGO_ENV', '').lower() == 'production'
+)
 
 if IS_PRODUCTION:
     # Security settings for production
