@@ -6,11 +6,27 @@ import {
   Space,
   Skeleton,
   Empty,
+  Row,
+  Col,
+  Statistic,
 } from 'antd';
 import {
   DollarOutlined,
   CalendarOutlined,
+  ShoppingOutlined,
+  CheckCircleOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import dayjs, { Dayjs } from 'dayjs';
 import { shipmentService } from '../../services/shipmentService';
 import { Shipment } from '../../types/shipment';
@@ -25,10 +41,23 @@ interface DailyData {
   ordersShipped: number; // Count of shipped orders (has_label = true)
 }
 
+interface SummaryStats {
+  totalSpent: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  totalShipments: number;
+}
+
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [dailyData, setDailyData] = useState<DailyData[]>([]);
+  const [summaryStats, setSummaryStats] = useState<SummaryStats>({
+    totalSpent: 0,
+    totalOrders: 0,
+    averageOrderValue: 0,
+    totalShipments: 0,
+  });
 
   useEffect(() => {
     loadDashboardData();
@@ -77,6 +106,19 @@ const Dashboard: React.FC = () => {
         .sort((a, b) => a.date.localeCompare(b.date));
 
       setDailyData(daily);
+
+      // Calculate summary statistics
+      const totalSpent = daily.reduce((sum, d) => sum + d.amountSpent, 0);
+      const totalOrders = daily.reduce((sum, d) => sum + d.ordersShipped, 0);
+      const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
+      const totalShipments = filteredShipments.length;
+
+      setSummaryStats({
+        totalSpent,
+        totalOrders,
+        averageOrderValue,
+        totalShipments,
+      });
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     } finally {
@@ -109,81 +151,145 @@ const Dashboard: React.FC = () => {
       </div>
 
       {loading ? (
-        <Card>
-          <Skeleton active paragraph={{ rows: 8 }} />
-        </Card>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card><Skeleton active /></Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card><Skeleton active /></Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card><Skeleton active /></Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card><Skeleton active /></Card>
+          </Col>
+        </Row>
       ) : (
-        <Card 
-          title={
-            <Space>
-              <CalendarOutlined />
-              <span>Daily Spending & Shipped Orders</span>
-            </Space>
-          }
-          className="dashboard-card"
-        >
-          {dailyData.length > 0 ? (
-            <div className="bar-chart-container">
-              <div className="bar-chart-legend">
-                <div className="legend-item">
-                  <span className="legend-color" style={{ backgroundColor: '#1890ff' }}></span>
-                  <span>Amount Spent ($)</span>
-                </div>
-                <div className="legend-item">
-                  <span className="legend-color" style={{ backgroundColor: '#52c41a' }}></span>
-                  <span>Orders Shipped</span>
-                </div>
+        <>
+          {/* Summary Statistics Cards */}
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            <Col xs={24} sm={12} lg={6}>
+              <Card className="stat-card">
+                <Statistic
+                  title="Total Spent"
+                  value={summaryStats.totalSpent}
+                  prefix={<DollarOutlined />}
+                  precision={2}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card className="stat-card">
+                <Statistic
+                  title="Orders Shipped"
+                  value={summaryStats.totalOrders}
+                  prefix={<CheckCircleOutlined />}
+                  valueStyle={{ color: '#52c41a' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card className="stat-card">
+                <Statistic
+                  title="Average Order Value"
+                  value={summaryStats.averageOrderValue}
+                  prefix={<DollarOutlined />}
+                  precision={2}
+                  valueStyle={{ color: '#722ed1' }}
+                />
+              </Card>
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <Card className="stat-card">
+                <Statistic
+                  title="Total Shipments"
+                  value={summaryStats.totalShipments}
+                  prefix={<ShoppingOutlined />}
+                  valueStyle={{ color: '#fa8c16' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {/* Daily Line Chart */}
+          <Card 
+            title={
+              <Space>
+                <LineChartOutlined />
+                <span>Daily Spending & Shipped Orders</span>
+              </Space>
+            }
+            className="dashboard-card"
+          >
+            {dailyData.length > 0 ? (
+              <div className="line-chart-container">
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart
+                    data={dailyData.map(item => ({
+                      date: dayjs(item.date).format('MMM DD'),
+                      fullDate: item.date,
+                      'Amount Spent ($)': Number(item.amountSpent.toFixed(2)),
+                      'Orders Shipped': item.ordersShipped,
+                    }))}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis 
+                      yAxisId="left"
+                      label={{ value: 'Amount ($)', angle: -90, position: 'insideLeft' }}
+                    />
+                    <YAxis 
+                      yAxisId="right"
+                      orientation="right"
+                      label={{ value: 'Orders', angle: 90, position: 'insideRight' }}
+                    />
+                    <Tooltip 
+                      formatter={(value: any, name?: string) => {
+                        const displayName = name || '';
+                        if (displayName === 'Amount Spent ($)') {
+                          return [`$${Number(value).toFixed(2)}`, displayName];
+                        }
+                        return [value, displayName];
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      yAxisId="left"
+                      type="basis"
+                      dataKey="Amount Spent ($)"
+                      stroke="#8884d8"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 6, stroke: '#8884d8', strokeWidth: 2, fill: '#fff' }}
+                      name="Amount Spent ($)"
+                      connectNulls={true}
+                      isAnimationActive={true}
+                      animationDuration={800}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="basis"
+                      dataKey="Orders Shipped"
+                      stroke="#82ca9d"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 6, stroke: '#82ca9d', strokeWidth: 2, fill: '#fff' }}
+                      name="Orders Shipped"
+                      connectNulls={true}
+                      isAnimationActive={true}
+                      animationDuration={800}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
-              
-              <div className="bar-chart">
-                {dailyData.map((item) => (
-                  <div key={item.date} className="bar-chart-day">
-                    <div className="bar-chart-date">
-                      {dayjs(item.date).format('MMM DD')}
-                    </div>
-                    <div className="bar-chart-bars">
-                      {/* Amount Spent Bar */}
-                      <div className="bar-wrapper">
-                        <div 
-                          className="bar bar-amount"
-                          style={{ 
-                            height: `${(item.amountSpent / maxAmount) * 100}%`,
-                            minHeight: item.amountSpent > 0 ? '4px' : '0'
-                          }}
-                          title={`$${item.amountSpent.toFixed(2)}`}
-                        >
-                          {item.amountSpent > 0 && (
-                            <span className="bar-value">${item.amountSpent.toFixed(2)}</span>
-                          )}
-                        </div>
-                        <div className="bar-label">Spent</div>
-                      </div>
-                      
-                      {/* Orders Shipped Bar */}
-                      <div className="bar-wrapper">
-                        <div 
-                          className="bar bar-orders"
-                          style={{ 
-                            height: `${(item.ordersShipped / maxOrders) * 100}%`,
-                            minHeight: item.ordersShipped > 0 ? '4px' : '0'
-                          }}
-                          title={`${item.ordersShipped} orders`}
-                        >
-                          {item.ordersShipped > 0 && (
-                            <span className="bar-value">{item.ordersShipped}</span>
-                          )}
-                        </div>
-                        <div className="bar-label">Shipped</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Empty description="No data available for selected date range" />
-          )}
-        </Card>
+            ) : (
+              <Empty description="No data available for selected date range" />
+            )}
+          </Card>
+        </>
       )}
     </div>
   );

@@ -15,7 +15,7 @@ const { Title, Paragraph } = Typography;
 const WizardSteps: React.FC = () => {
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
-  const { currentStep, shipments, labelSize } = useAppSelector((state) => state.wizard);
+  const { currentStep, shipments, labelSize, currentPurchaseBatch } = useAppSelector((state) => state.wizard);
 
   // Clear selected shipments when step changes
   useEffect(() => {
@@ -42,25 +42,38 @@ const WizardSteps: React.FC = () => {
   ];
 
   const handleDownload = () => {
-    // Simulate download - in a real app, this would download the labels
-    message.success('Labels download initiated. In a production app, this would download the label files.');
-  };
-
-  const handlePrint = () => {
-    // Filter only shipped products (those with labels)
-    const shippedShipments = shipments.filter(s => s.has_label === true);
-    
-    if (shippedShipments.length === 0) {
-      message.warning('No shipped products available to print. Please purchase labels first.');
+    // Use only the current purchase batch, not all previous purchases
+    const purchaseBatch = currentPurchaseBatch || [];
+    if (purchaseBatch.length === 0) {
+      message.warning('No labels available to download.');
       return;
     }
 
     try {
-      generateShippingLabelsPDF(shippedShipments, {
+      generateShippingLabelsPDF(purchaseBatch, {
         pageSize: labelSize || 'letter',
         orientation: 'portrait',
       });
-      message.success(`Generated PDF with ${shippedShipments.length} shipping label(s) in ${labelSize === 'letter' ? 'A4/Letter' : '4x6'} format`);
+      message.success(`Downloaded PDF with ${purchaseBatch.length} shipping label(s) from current purchase`);
+    } catch (error: any) {
+      message.error(error.message || 'Failed to generate PDF');
+    }
+  };
+
+  const handlePrint = () => {
+    // Use only the current purchase batch, not all previous purchases
+    const purchaseBatch = currentPurchaseBatch || [];
+    if (purchaseBatch.length === 0) {
+      message.warning('No labels available to print. Please purchase labels first.');
+      return;
+    }
+
+    try {
+      generateShippingLabelsPDF(purchaseBatch, {
+        pageSize: labelSize || 'letter',
+        orientation: 'portrait',
+      });
+      message.success(`Generated PDF with ${purchaseBatch.length} shipping label(s) in ${labelSize === 'letter' ? 'A4/Letter' : '4x6'} format`);
     } catch (error: any) {
       message.error(error.message || 'Failed to generate PDF');
     }
@@ -87,7 +100,7 @@ const WizardSteps: React.FC = () => {
               Success!
             </Title>
             <Paragraph style={{ fontSize: '18px', marginBottom: '8px' }}>
-              Successfully created <strong>{shipments.length}</strong> shipping label{shipments.length !== 1 ? 's' : ''}!
+              Successfully created <strong>{currentPurchaseBatch?.length || 0}</strong> shipping label{(currentPurchaseBatch?.length || 0) !== 1 ? 's' : ''}!
             </Paragraph>
             <Paragraph type="secondary" style={{ marginBottom: '32px' }}>
               Your labels are ready for download and printing.

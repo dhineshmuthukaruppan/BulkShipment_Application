@@ -220,73 +220,18 @@ class CSVParser:
     
     def _generate_sequential_order_numbers(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Generate sequential order numbers using master configuration for rows where order_number column is empty.
+        Mark rows with empty order_number columns for later generation at purchase time.
         
-        Primary requirement: If the order_number column (column 21) is empty in the CSV,
-        generate sequential order numbers using the format configured in Master settings.
+        NOTE: Order numbers are NOT generated here to prevent race conditions.
+        They will be generated atomically at purchase time using database transactions.
         
         Process:
-        1. Get active order number settings from Master configuration
-        2. Scan all rows to find existing order numbers (including those extracted from Address2)
-        3. Find the highest numeric suffix
-        4. For each row with empty order_number column, assign the next sequential ID using master format
+        1. For each row with empty order_number column, mark it with validation flag
+        2. Order numbers will be generated at purchase time using database locking
         """
-        import re
-        from shipping_app.models import OrderNumberSettings
-        
-        # Get active order number settings from Master
-        try:
-            settings = OrderNumberSettings.get_active_settings()
-            prefix = settings.prefix
-            separator = settings.separator
-            number_format = settings.number_format
-            starting_number = settings.starting_number
-        except Exception as e:
-            # Fallback to default if settings not available
-            self.logger.log_error('order_number_settings_error', f"Failed to load settings: {str(e)}")
-            prefix = 'ORD'
-            separator = '-'
-            number_format = '0000'
-            starting_number = 1
-        
-        # Extract all existing order numbers from the order_number column (column 21)
-        # Only consider order numbers that are already in the order_number column, not from Address2
-        existing_order_numbers = []
-        for row in rows:
-            order_num = row.get('order_number', '').strip()
-            if order_num:
-                existing_order_numbers.append(order_num)
-        
-        # Find the highest numeric suffix from existing order numbers
-        # Only consider order numbers that match the configured prefix format from Master
-        max_suffix = starting_number - 1  # Start from configured starting number - 1
-        for order_num in existing_order_numbers:
-            # Try to extract numeric suffix from configured prefix format (e.g., ORD-0001, ORDER-1, etc.)
-            # This ensures we only consider order numbers that match the Master configuration
-            pattern = re.escape(prefix) + re.escape(separator) + r'(\d+)'
-            match = re.search(pattern, order_num, re.IGNORECASE)
-            if match:
-                suffix = int(match.group(1))
-                max_suffix = max(max_suffix, suffix)
-            else:
-                # Also check for prefix without separator or with different separator
-                pattern_alt = re.escape(prefix) + r'[-_]?' + r'(\d+)'
-                match_alt = re.search(pattern_alt, order_num, re.IGNORECASE)
-                if match_alt:
-                    suffix = int(match_alt.group(1))
-                    max_suffix = max(max_suffix, suffix)
-        
-        # Generate sequential order numbers for rows where order_number column is empty
-        # This is the primary requirement: fill empty order_number columns with sequential IDs
-        current_counter = max_suffix + 1
         for row in rows:
             # Check if order_number column is empty (this is the main check)
             if not row.get('order_number', '').strip():
-                # Generate order number using master configuration format
-                format_str = f"{{:{number_format}}}"
-                formatted_num = format_str.format(current_counter)
-                order_number = f"{prefix}{separator}{formatted_num}"
-                row['order_number'] = order_number
                 validation_flags = row.get('validation_flags', [])
                 # Remove any existing order_number related flags and add auto-generated flag
                 flags_to_remove = ['order_number_extracted_from_address2', 'missing_order_number']
@@ -296,7 +241,7 @@ class CSVParser:
                 if 'order_number_auto_generated' not in validation_flags:
                     validation_flags.append('order_number_auto_generated')
                 row['validation_flags'] = validation_flags
-                current_counter += 1
+                # Keep order_number empty - it will be generated at purchase time
         
         return rows
     

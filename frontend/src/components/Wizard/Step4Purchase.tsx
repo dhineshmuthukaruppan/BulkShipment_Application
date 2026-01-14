@@ -16,7 +16,7 @@ import {
   PrinterOutlined,
 } from '@ant-design/icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { setCurrentStep, setShipments, setLabelSize } from '../../store/slices/wizardSlice';
+import { setCurrentStep, setShipments, setLabelSize, setCurrentPurchaseBatch } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
 import { generateShippingLabelsPDF } from '../../utils/pdfGenerator';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -59,15 +59,37 @@ const Step4Purchase: React.FC = () => {
       return;
     }
 
+    // Check balance before purchase
+    const USER_BALANCE_KEY = 'shipping_pro_user_balance';
+    const currentBalance = parseFloat(localStorage.getItem(USER_BALANCE_KEY) || '100.00');
+    if (currentBalance < totalCost) {
+      message.error(`Insufficient balance. You have $${currentBalance.toFixed(2)}, but need $${totalCost.toFixed(2)}`);
+      return;
+    }
+
     setPurchasing(true);
     try {
       const shipmentIds = shipments.map(s => s.id);
       const result = await shipmentService.purchase(shipmentIds, labelSize);
-      message.success(`Successfully created ${result.labels_created} labels!`);
+      
+      // Deduct balance after successful purchase
+      const newBalance = currentBalance - totalCost;
+      localStorage.setItem(USER_BALANCE_KEY, newBalance.toFixed(2));
+      // Notify Header component of balance update
+      window.dispatchEvent(new CustomEvent('balanceUpdated', { detail: newBalance }));
+      
+      message.success(`Successfully created ${result.labels_created} labels! Balance deducted: $${totalCost.toFixed(2)}`);
       
       // Reload all shipments to get updated has_label and tracking_number
       const allShipments = await shipmentService.getShipments();
       dispatch(setShipments(allShipments));
+      
+      // Store only the current purchase batch (shipments that were just purchased)
+      // Filter by the shipment IDs that were just purchased
+      const currentPurchaseBatch = allShipments.filter(s => 
+        shipmentIds.includes(s.id) && s.has_label === true
+      );
+      dispatch(setCurrentPurchaseBatch(currentPurchaseBatch));
       
       // Reload shipped shipments after purchase
       await loadShippedShipments();

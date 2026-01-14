@@ -19,6 +19,7 @@ interface WizardState {
   totalCost: number;
   drafts: Draft[];
   labelSize: 'letter' | '4x6';
+  currentPurchaseBatch: Shipment[]; // Shipments from the current purchase only
 }
 
 const initialState: WizardState = {
@@ -28,6 +29,7 @@ const initialState: WizardState = {
   totalCost: 0,
   drafts: [],
   labelSize: 'letter',
+  currentPurchaseBatch: [],
 };
 
 const wizardSlice = createSlice({
@@ -81,6 +83,10 @@ const wizardSlice = createSlice({
       state.selectedShipments = [];
       state.totalCost = 0;
       state.labelSize = 'letter';
+      state.currentPurchaseBatch = [];
+    },
+    setCurrentPurchaseBatch: (state, action: PayloadAction<Shipment[]>) => {
+      state.currentPurchaseBatch = action.payload;
     },
     setLabelSize: (state, action: PayloadAction<'letter' | '4x6'>) => {
       state.labelSize = action.payload;
@@ -145,6 +151,7 @@ export const {
   deleteDraft,
   updateDraft,
   setLabelSize,
+  setCurrentPurchaseBatch,
 } = wizardSlice.actions;
 
 export default wizardSlice.reducer;
