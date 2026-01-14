@@ -35,7 +35,7 @@ class ShipmentSerializer(serializers.ModelSerializer):
         """Check if shipment has a shipping label (shipped)"""
         try:
             return hasattr(obj, 'label') and obj.label is not None
-        except:
+        except (AttributeError, Exception):
             return False
     
     def get_tracking_number(self, obj):
@@ -43,7 +43,7 @@ class ShipmentSerializer(serializers.ModelSerializer):
         try:
             if hasattr(obj, 'label') and obj.label:
                 return obj.label.tracking_number
-        except:
+        except (AttributeError, Exception):
             pass
         return None
     
