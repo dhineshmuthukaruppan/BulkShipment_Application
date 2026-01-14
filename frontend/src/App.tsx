@@ -15,18 +15,26 @@ const STORAGE_KEY = 'shipping_pro_selected_page';
 const THEME_STORAGE_KEY = 'shipping_pro_theme';
 
 function App() {
-  // Initialize theme from localStorage or default to 'light'
-  // Also check if already set in DOM (from inline script in index.html)
+  // Initialize theme synchronously from DOM (set by inline script) to prevent flicker
+  // The inline script in index.html sets data-theme before React renders
   const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>(() => {
-    // First check if already set in DOM (prevents flicker)
-    const domTheme = document.body.getAttribute('data-theme');
+    // Read from DOM first (set by inline script) - this is the fastest way
+    const domTheme = document.documentElement.getAttribute('data-theme') || 
+                     document.body.getAttribute('data-theme');
     if (domTheme === 'dark' || domTheme === 'light') {
       return domTheme;
     }
-    // Fallback to localStorage
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    return (saved === 'dark' || saved === 'light') ? saved : 'light';
+    // Fallback to localStorage (shouldn't happen if inline script works)
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      return (saved === 'dark' || saved === 'light') ? saved : 'light';
+    } catch {
+      return 'light';
+    }
   });
+  
+  // Track if this is the first render
+  const [isFirstRender, setIsFirstRender] = useState(true);
 
   // Initialize from localStorage or default to 'upload'
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'upload' | 'master'>(() => {
@@ -37,36 +45,45 @@ function App() {
     return 'upload'; // Default to upload instead of dashboard
   });
 
+  // Re-enable transitions after first render to prevent flicker
+  useEffect(() => {
+    if (isFirstRender) {
+      // Re-enable transitions after a short delay to allow initial render
+      const timer = setTimeout(() => {
+        const style = document.createElement('style');
+        style.textContent = `
+          * {
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease !important;
+          }
+        `;
+        document.head.appendChild(style);
+        setIsFirstRender(false);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isFirstRender]);
+
   // Save theme to localStorage and update DOM immediately for CSS variables
   useEffect(() => {
-    localStorage.setItem(THEME_STORAGE_KEY, currentTheme);
-    // Update document body and root for CSS variables - do this synchronously
-    document.body.setAttribute('data-theme', currentTheme);
-    const root = document.getElementById('root');
-    if (root) {
-      root.setAttribute('data-theme', currentTheme);
+    // Only update if theme actually changed (not on first render if already set)
+    const currentDomTheme = document.documentElement.getAttribute('data-theme');
+    if (currentDomTheme !== currentTheme) {
+      localStorage.setItem(THEME_STORAGE_KEY, currentTheme);
+      // Update document elements for CSS variables
+      document.documentElement.setAttribute('data-theme', currentTheme);
+      document.body.setAttribute('data-theme', currentTheme);
+      document.body.style.colorScheme = currentTheme;
+      const root = document.getElementById('root');
+      if (root) {
+        root.setAttribute('data-theme', currentTheme);
+      }
     }
-    // Force immediate style recalculation
-    document.body.style.colorScheme = currentTheme;
   }, [currentTheme]);
 
   // Save to localStorage whenever currentPage changes
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, currentPage);
   }, [currentPage]);
-
-  // Ensure theme is set on mount (may already be set by inline script, but ensure consistency)
-  useEffect(() => {
-    // Only update if different to avoid unnecessary DOM manipulation
-    if (document.body.getAttribute('data-theme') !== currentTheme) {
-      document.body.setAttribute('data-theme', currentTheme);
-      const root = document.getElementById('root');
-      if (root) {
-        root.setAttribute('data-theme', currentTheme);
-      }
-      document.body.style.colorScheme = currentTheme;
-    }
-  }, []);
 
   const handleMenuClick = (key: string) => {
     if (key === 'dashboard') {
@@ -82,12 +99,19 @@ function App() {
     setCurrentTheme(prev => {
       const newTheme = prev === 'light' ? 'dark' : 'light';
       // Update DOM immediately for instant CSS variable changes
+      document.documentElement.setAttribute('data-theme', newTheme);
       document.body.setAttribute('data-theme', newTheme);
+      document.body.style.colorScheme = newTheme;
       const root = document.getElementById('root');
       if (root) {
         root.setAttribute('data-theme', newTheme);
       }
-      document.body.style.colorScheme = newTheme;
+      // Save to localStorage immediately
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+      } catch (e) {
+        console.warn('Failed to save theme to localStorage:', e);
+      }
       return newTheme;
     });
   };

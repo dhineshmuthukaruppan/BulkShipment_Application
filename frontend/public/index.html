@@ -34,19 +34,41 @@
         try {
           var theme = localStorage.getItem('shipping_pro_theme');
           var validTheme = (theme === 'dark' || theme === 'light') ? theme : 'light';
+          
+          // Set theme attributes immediately - BEFORE any rendering
+          document.documentElement.setAttribute('data-theme', validTheme);
           document.body.setAttribute('data-theme', validTheme);
           document.body.style.colorScheme = validTheme;
+          document.body.style.backgroundColor = validTheme === 'dark' ? '#141414' : '#fff';
+          document.body.style.color = validTheme === 'dark' ? '#fff' : '#262626';
+          
+          // Set root element if it exists (might not exist yet, but try anyway)
           var root = document.getElementById('root');
           if (root) {
             root.setAttribute('data-theme', validTheme);
+            root.style.backgroundColor = validTheme === 'dark' ? '#141414' : '#fff';
+            root.style.color = validTheme === 'dark' ? '#fff' : '#262626';
           }
+          
+          // Set html element background to match
+          document.documentElement.style.backgroundColor = validTheme === 'dark' ? '#141414' : '#fff';
         } catch (e) {
           // Fallback to light theme if localStorage fails
+          document.documentElement.setAttribute('data-theme', 'light');
           document.body.setAttribute('data-theme', 'light');
           document.body.style.colorScheme = 'light';
+          document.body.style.backgroundColor = '#fff';
+          document.body.style.color = '#262626';
         }
       })();
     </script>
+    <style>
+      /* Disable transitions on initial load to prevent flicker */
+      * {
+        transition: none !important;
+      }
+      /* Re-enable transitions after a short delay */
+    </style>
     <div id="root"></div>
     <!--
       This HTML file is a template.
