@@ -572,19 +572,13 @@ const Step2Review: React.FC = () => {
 
   // Handle approve action - change status to ready
   const handleApprove = async (shipment: Shipment) => {
-    if (shipment.status === 'ready') {
-      return; // Already approved
-    }
-
-    // Don't allow approval if shipment is invalid
-    if (isShipmentInvalid(shipment)) {
-      message.warning('Cannot approve shipment with invalid address. Please fix the address first.');
-      return;
-    }
-
     try {
       const updated = await shipmentService.updateShipment(shipment.id, { status: 'ready' });
-      dispatch(updateShipment(updated));
+      
+      // Fetch the latest shipment data to ensure we have the correct status
+      const refreshed = await shipmentService.getShipment(shipment.id);
+      dispatch(updateShipment(refreshed));
+      
       message.success('Shipment approved successfully');
     } catch (error) {
       message.error('Failed to approve shipment');
@@ -599,28 +593,6 @@ const Step2Review: React.FC = () => {
     }
 
     try {
-      // Filter out already approved shipments and invalid shipments
-      const toApprove = shipments.filter(
-        s => selectedShipments.includes(s.id) && s.status !== 'ready' && !isShipmentInvalid(s)
-      );
-
-      const invalidShipments = shipments.filter(
-        s => selectedShipments.includes(s.id) && isShipmentInvalid(s)
-      );
-
-      if (invalidShipments.length > 0) {
-        message.warning(
-          `${invalidShipments.length} selected shipment${invalidShipments.length > 1 ? 's have' : ' has'} invalid address${invalidShipments.length > 1 ? 'es' : ''}. Please fix the address${invalidShipments.length > 1 ? 'es' : ''} first.`
-        );
-      }
-
-      if (toApprove.length === 0) {
-        if (invalidShipments.length === 0) {
-          message.info('All selected shipments are already approved');
-        }
-        return;
-      }
-
       // Start animation for all selected shipments
       setAnimatingShipments(new Set(selectedShipments));
 
@@ -1134,8 +1106,9 @@ const Step2Review: React.FC = () => {
         const isInvalid = isShipmentInvalid(record);
         const isAnimating = animatingShipments.has(record.id);
 
-        const handleApproveClick = async () => {
-          if (isApproved || isInvalid) return;
+        const handleApproveClick = async (e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
           
           // Start animation
           setAnimatingShipments(prev => new Set(prev).add(record.id));
@@ -1200,34 +1173,17 @@ const Step2Review: React.FC = () => {
 
         return (
           <Space size="small">
-            {/* Approve/Approved Button */}
+            {/* Simple Approve Button */}
             <Button
-              type="default"
               size="small"
               onClick={handleApproveClick}
-              disabled={isApproved || isInvalid}
-              className={`approve-button ${isAnimating ? 'approve-button-animating' : ''} ${isApproved ? 'approve-button-approved' : ''}`}
               style={{
-                backgroundColor: isApproved ? '#52c41a' : 'transparent',
-                borderColor: isApproved ? '#52c41a' : (isInvalid ? '#ff4d4f' : '#d9d9d9'),
-                color: isApproved ? '#fff' : (isInvalid ? '#ff4d4f' : (theme === 'dark' ? '#fff' : '#262626')),
-                fontWeight: 500,
-                minWidth: isApproved ? '95px' : '85px',
-                height: '32px',
-                
-                opacity: isInvalid ? 0.6 : 1,
-                cursor: isInvalid ? 'not-allowed' : 'pointer',
+                backgroundColor: isApproved ? '#52c41a' : undefined,
+                borderColor: isApproved ? '#52c41a' : undefined,
+                color: isApproved ? '#fff' : undefined,
               }}
-              title={isInvalid ? 'Cannot approve: Address is invalid. Please fix the address first.' : (isApproved ? 'Already approved' : 'Approve shipment')}
             >
-              {isApproved ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <CheckOutlined style={{ fontSize: '14px' }} />
-                  Approved
-                </span>
-              ) : (
-                'Approve'
-              )}
+              {isApproved ? 'Approved' : 'Approve'}
             </Button>
 
             {/* More Actions Dropdown */}
@@ -2191,17 +2147,6 @@ const Step2Review: React.FC = () => {
         <p>Are you sure you want to delete this shipment? This action cannot be undone.</p>
       </Modal>
 
-      {/* Custom CSS for approve button hover effect */}
-      <style>{`
-        .approve-button:not(.approve-button-approved):not(:disabled):hover {
-          border-color: #52c41a !important;
-          color: #52c41a !important;
-        }
-        
-        .approve-button:not(.approve-button-approved):not(:disabled):hover .anticon {
-          color: #52c41a !important;
-        }
-      `}</style>
     </div>
   );
 };
