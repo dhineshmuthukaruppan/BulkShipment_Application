@@ -109,8 +109,11 @@ DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = os.getenv('DB_PORT', '5432')
 
-# Validate required database configuration
-if not DB_NAME or not DB_USER or not DB_PASSWORD:
+# Validate required database configuration (skip during build/collectstatic)
+# During build phase, database might not be available yet
+SKIP_DB_VALIDATION = os.getenv('SKIP_DB_VALIDATION', 'False').lower() == 'true'
+
+if not SKIP_DB_VALIDATION and (not DB_NAME or not DB_USER or not DB_PASSWORD):
     raise ValueError(
         "PostgreSQL database configuration is required. "
         "Please set the following environment variables:\n"
