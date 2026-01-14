@@ -127,7 +127,6 @@ const Step2Review: React.FC = () => {
 
     try {
       const oldStatus = editingShipment.status;
-      const wasInvalid = oldStatus === 'invalid';
       const updateData: any = {};
       
       if (editModalType === 'from') {

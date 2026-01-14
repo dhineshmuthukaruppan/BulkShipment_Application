@@ -9,8 +9,6 @@ import {
   Modal,
   message,
   Popconfirm,
-  Empty,
-  Skeleton,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -97,7 +95,7 @@ const Step3Shipping: React.FC = () => {
   const handleServiceChange = async (shipmentId: number, service: string) => {
     try {
       const shipment = shipments.find(s => s.id === shipmentId);
-      const result = await shipmentService.calculateShipping(
+      await shipmentService.calculateShipping(
         shipmentId, 
         service,
         shipment?.shipping_provider

@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'shipping_app',
 ]
 
+# Base middleware - WhiteNoise will be added in production
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -108,8 +109,11 @@ DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_PORT = os.getenv('DB_PORT', '5432')
 
-# Validate required database configuration
-if not DB_NAME or not DB_USER or not DB_PASSWORD:
+# Validate required database configuration (skip during build/collectstatic)
+# During build phase, database might not be available yet
+SKIP_DB_VALIDATION = os.getenv('SKIP_DB_VALIDATION', 'False').lower() == 'true'
+
+if not SKIP_DB_VALIDATION and (not DB_NAME or not DB_USER or not DB_PASSWORD):
     raise ValueError(
         "PostgreSQL database configuration is required. "
         "Please set the following environment variables:\n"
@@ -281,3 +285,75 @@ SMARTY_AUTH_TOKEN = os.getenv('SMARTY_AUTH_TOKEN', '')
 # Sign up at: https://lob.com/
 # Note: API key should be base64 encoded (username:password)
 LOB_API_KEY = os.getenv('LOB_API_KEY', '')
+
+# Production Settings
+# Detect if running in production (Render, Railway, etc.)
+IS_PRODUCTION = (
+    os.getenv('RENDER', '').lower() == 'true' or 
+    os.getenv('RENDER_SERVICE_NAME') is not None or  # Render sets this automatically
+    os.getenv('RAILWAY_ENVIRONMENT', '').lower() == 'production' or 
+    os.getenv('DJANGO_ENV', '').lower() == 'production'
+)
+
+if IS_PRODUCTION:
+    # Security settings for production
+    DEBUG = False
+    SECRET_KEY = os.getenv('SECRET_KEY', SECRET_KEY)  # Use environment variable if set
+    
+    # Update ALLOWED_HOSTS from environment or use default
+    allowed_hosts_env = os.getenv('ALLOWED_HOSTS', '')
+    if allowed_hosts_env:
+        ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_env.split(',')]
+    else:
+        ALLOWED_HOSTS = ['*']  # Will be set by deployment platform
+    
+    # CORS settings for production
+    cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
+    if cors_origins:
+        CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',')]
+    else:
+        CORS_ALLOWED_ORIGINS = [
+            "https://frontend-phi-three-66.vercel.app",
+            "https://frontend-o94p5b365-dhineshmuthukaruppan-9911s-projects.vercel.app",
+            "https://bulk-shipping-frontend.vercel.app",
+            "https://bulk-shipping-frontend.netlify.app",
+        ]
+    
+    # CSRF trusted origins
+    csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+    if csrf_origins:
+        CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins.split(',')]
+    else:
+        CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS
+    
+    # Static files (WhiteNoise)
+    STATIC_URL = '/static/'
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+    
+    # Add WhiteNoise middleware after SecurityMiddleware
+    MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
+    
+    # Security headers
+    SECURE_SSL_REDIRECT = False  # Let platform handle SSL
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+else:
+    # Development settings
+    DEBUG = True
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    CSRF_TRUSTED_ORIGINS = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    
+    # Static files for development
+    STATIC_URL = '/static/'
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

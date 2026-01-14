@@ -12,7 +12,6 @@ import {
 } from 'antd';
 import {
   DollarOutlined,
-  CalendarOutlined,
   ShoppingOutlined,
   CheckCircleOutlined,
   LineChartOutlined,
@@ -29,7 +28,6 @@ import {
 } from 'recharts';
 import dayjs, { Dayjs } from 'dayjs';
 import { shipmentService } from '../../services/shipmentService';
-import { Shipment } from '../../types/shipment';
 import './Dashboard.css';
 
 const { Title } = Typography;
@@ -126,9 +124,10 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Calculate max values for scaling
-  const maxAmount = Math.max(...dailyData.map(d => d.amountSpent), 1);
-  const maxOrders = Math.max(...dailyData.map(d => d.ordersShipped), 1);
+  useEffect(() => {
+    loadDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange]);
 
   return (
     <div className="dashboard-container">

@@ -8,17 +8,14 @@ import {
   Checkbox,
   message,
   Divider,
-  Select,
 } from 'antd';
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
-  PrinterOutlined,
 } from '@ant-design/icons';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { setCurrentStep, setShipments, setLabelSize, setCurrentPurchaseBatch } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
-import { generateShippingLabelsPDF } from '../../utils/pdfGenerator';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const { Title, Text } = Typography;
@@ -28,25 +25,8 @@ const Step4Purchase: React.FC = () => {
   const dispatch = useAppDispatch();
   const { shipments, totalCost } = useAppSelector((state) => state.wizard);
   const [labelSize, setLabelSizeLocal] = useState('letter');
-  const [printSize, setPrintSize] = useState('letter');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
-  const [shippedShipments, setShippedShipments] = useState<any[]>([]);
-
-  // Load shipped shipments (those with labels)
-  useEffect(() => {
-    loadShippedShipments();
-  }, []);
-
-  const loadShippedShipments = async () => {
-    try {
-      const allShipments = await shipmentService.getShipments();
-      const shipped = allShipments.filter(s => s.has_label === true);
-      setShippedShipments(shipped);
-    } catch (error) {
-      console.error('Failed to load shipped shipments:', error);
-    }
-  };
 
   const handlePurchase = async () => {
     if (shipments.length === 0) {
@@ -91,8 +71,6 @@ const Step4Purchase: React.FC = () => {
       );
       dispatch(setCurrentPurchaseBatch(currentPurchaseBatch));
       
-      // Reload shipped shipments after purchase
-      await loadShippedShipments();
       dispatch(setCurrentStep(5)); // Move to success step
     } catch (error: any) {
       message.error(error.response?.data?.error || 'Failed to purchase labels');
@@ -101,22 +79,6 @@ const Step4Purchase: React.FC = () => {
     }
   };
 
-  const handlePrintLabels = () => {
-    if (shippedShipments.length === 0) {
-      message.warning('No shipped products available to print. Please purchase labels first.');
-      return;
-    }
-
-    try {
-      generateShippingLabelsPDF(shippedShipments, {
-        pageSize: printSize as 'letter' | '4x6',
-        orientation: 'portrait',
-      });
-      message.success(`Generated PDF with ${shippedShipments.length} shipping label(s) in ${printSize === 'letter' ? 'A4/Letter' : '4x6'} format`);
-    } catch (error: any) {
-      message.error(error.message || 'Failed to generate PDF');
-    }
-  };
 
   return (
     <div>
@@ -133,7 +95,6 @@ const Step4Purchase: React.FC = () => {
                 onChange={(e) => {
                   const newSize = e.target.value as 'letter' | '4x6';
                   setLabelSizeLocal(newSize);
-                  setPrintSize(newSize);
                   dispatch(setLabelSize(newSize));
                 }}
                 style={{ marginTop: 16 }}
