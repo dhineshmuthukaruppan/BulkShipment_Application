@@ -82,6 +82,12 @@ export const shipmentService = {
     return response.data;
   },
 
+  // Validate all addresses (from and to)
+  validateAllAddresses: async (id: number) => {
+    const response = await api.post(`/shipments/${id}/validate_all_addresses/`);
+    return response.data;
+  },
+
   // Calculate shipping
   calculateShipping: async (id: number, service: string, provider?: string): Promise<{
     service: string;

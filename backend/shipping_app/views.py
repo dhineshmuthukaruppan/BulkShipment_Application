@@ -631,6 +631,98 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         
         return Response(result)
     
+    @action(detail=True, methods=['post'])
+    def validate_all_addresses(self, request, pk=None):
+        """Validate both from and to addresses for a specific shipment"""
+        shipment = self.get_object()
+        validator = AddressValidator()
+        validation_messages = []
+        
+        # Validate from address if present
+        from_valid = True
+        from_validation_error = None
+        if shipment.from_address or shipment.from_city or shipment.from_zip:
+            from_address = {
+                'first_name': shipment.from_first_name or '',
+                'last_name': shipment.from_last_name or '',
+                'address': shipment.from_address or '',
+                'address2': shipment.from_address2 or '',
+                'city': shipment.from_city or '',
+                'state': shipment.from_state or '',
+                'zip': shipment.from_zip or '',
+            }
+            from_result = validator.validate(from_address)
+            from_valid = from_result['valid']
+            if not from_valid:
+                from_validation_error = from_result.get('error', 'Ship from address could not be validated')
+                validation_messages.append(f"Ship From: {from_validation_error}")
+                # Update validation flags
+                validation_flags = list(shipment.validation_flags or [])
+                if 'invalid_ship_from_address' not in validation_flags:
+                    validation_flags.append('invalid_ship_from_address')
+                shipment.validation_flags = validation_flags
+            else:
+                # Remove invalid flags if valid
+                validation_flags = list(shipment.validation_flags or [])
+                validation_flags = [f for f in validation_flags if not f.startswith('invalid_ship_from')]
+                shipment.validation_flags = validation_flags
+        
+        # Validate to address
+        to_address = {
+            'first_name': shipment.to_first_name,
+            'last_name': shipment.to_last_name,
+            'address': shipment.to_address,
+            'address2': shipment.to_address2,
+            'city': shipment.to_city,
+            'state': shipment.to_state,
+            'zip': shipment.to_zip,
+        }
+        to_result = validator.validate(to_address)
+        to_valid = to_result['valid']
+        to_validation_error = None
+        if not to_valid:
+            to_validation_error = to_result.get('error', 'Ship to address could not be validated')
+            validation_messages.append(f"Ship To: {to_validation_error}")
+            # Update validation flags
+            validation_flags = list(shipment.validation_flags or [])
+            if 'invalid_ship_to_address' not in validation_flags:
+                validation_flags.append('invalid_ship_to_address')
+            shipment.validation_flags = validation_flags
+        else:
+            # Remove invalid flags if valid
+            validation_flags = list(shipment.validation_flags or [])
+            validation_flags = [f for f in validation_flags if not f.startswith('invalid_ship_to')]
+            shipment.validation_flags = validation_flags
+            # Update with corrected address
+            corrected = to_result['corrected_address']
+            shipment.to_address = corrected.get('address', shipment.to_address)
+            shipment.to_city = corrected.get('city', shipment.to_city)
+            shipment.to_state = corrected.get('state', shipment.to_state)
+            shipment.to_zip = corrected.get('zip', shipment.to_zip)
+            shipment.address_validated = True
+            shipment.address_validation_api_used = to_result['api_used']
+            shipment.address_corrections = to_result.get('corrections', [])
+        
+        # Store validation errors in address_validation_error field
+        # Combine both from and to errors if they exist
+        error_parts = []
+        if from_validation_error:
+            error_parts.append(f"Ship From: {from_validation_error}")
+        if to_validation_error:
+            error_parts.append(f"Ship To: {to_validation_error}")
+        shipment.address_validation_error = '\n'.join(error_parts) if error_parts else ''
+        shipment.save()  # This will trigger status recalculation
+        
+        all_valid = from_valid and to_valid
+        return Response({
+            'valid': all_valid,
+            'from_valid': from_valid,
+            'to_valid': to_valid,
+            'validation_messages': validation_messages,
+            'from_validation_error': from_validation_error,
+            'to_validation_error': to_validation_error,
+        })
+    
     @action(detail=False, methods=['post'])
     def test_validate_address(self, request):
         """

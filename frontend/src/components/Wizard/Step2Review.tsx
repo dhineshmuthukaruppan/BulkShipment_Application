@@ -30,6 +30,7 @@ import {
   FilterOutlined,
   CheckOutlined,
   ReloadOutlined,
+  StarFilled,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
@@ -173,179 +174,36 @@ const Step2Review: React.FC = () => {
         // Run validation asynchronously without blocking
         (async () => {
           try {
-            // Use the already updated shipment data instead of fetching again
-            const fromAddress = {
-              first_name: updatedShipment.from_first_name || '',
-              last_name: updatedShipment.from_last_name || '',
-              address: updatedShipment.from_address || '',
-              address2: updatedShipment.from_address2 || '',
-              city: updatedShipment.from_city || '',
-              state: updatedShipment.from_state || '',
-              zip: updatedShipment.from_zip || '',
-            };
+            // Validate both addresses using the new endpoint
+            const validationResult = await shipmentService.validateAllAddresses(updatedShipment.id);
             
-            const toAddress = {
-              first_name: updatedShipment.to_first_name || '',
-              last_name: updatedShipment.to_last_name || '',
-              address: updatedShipment.to_address || '',
-              address2: updatedShipment.to_address2 || '',
-              city: updatedShipment.to_city || '',
-              state: updatedShipment.to_state || '',
-              zip: updatedShipment.to_zip || '',
-            };
+            // Get updated shipment with validation results
+            const refreshedShipment = await shipmentService.getShipment(updatedShipment.id);
+            dispatch(updateShipment(refreshedShipment));
             
-            // Validate both addresses in a single API call
-            const validationResult = await shipmentService.batchValidateAddresses(fromAddress, toAddress);
-            
-            // Check if both addresses are valid using the new response format
-            // Use from_address_valid and to_address_valid directly from the API response
-            // These are the primary boolean values indicating validity
-            const fromValid = validationResult.from_address_valid === true;
-            const toValid = validationResult.to_address_valid === true;
-            const bothValid = validationResult.both_valid === true || 
-                            validationResult.valid === true ||
-                            (fromValid && toValid);
-            
-            // Get current shipment to access validation_flags
-            const currentShipment = await shipmentService.getShipment(updatedShipment.id);
-            let validationFlags = [...(currentShipment.validation_flags || [])];
-            
-            // List of invalid address flags
-            const invalidAddressFlags = [
-              'invalid_ship_from_address',
-              'invalid_ship_to_address',
-              'invalid_ship_from_city',
-              'invalid_ship_to_city',
-              'invalid_ship_from_pincode',
-              'invalid_ship_to_pincode',
-              'invalid_address',
-            ];
-            
-            // Update validation flags based on validation results
-            if (bothValid) {
-              // Both addresses are valid - remove all invalid address flags
-              validationFlags = validationFlags.filter(flag => !invalidAddressFlags.includes(flag));
-              
-              // Ensure address_reviewed flag is present
-              if (!validationFlags.includes('address_reviewed')) {
-                validationFlags.push('address_reviewed');
-              }
-              
-              // Update status to needs_review and clear invalid flags
-              await shipmentService.updateShipment(updatedShipment.id, { 
-                status: 'needs_review',
-                validation_flags: validationFlags
-              });
-              message.success('Addresses validated. Status updated to needs_review');
+            if (validationResult.valid) {
+              message.success('Addresses validated successfully');
             } else {
-              // At least one address is invalid - update flags accordingly
-              // Always ensure flags are set based on fromValid and toValid
-              
-              // Handle from address
-              if (fromValid) {
-                // From address is valid - remove all from address invalid flags
-                const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
-                validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
-              } else {
-                // From address is invalid - ensure invalid flag is set
-                // Remove existing from address flags first to avoid duplicates
-                const fromInvalidFlags = ['invalid_ship_from_address', 'invalid_ship_from_city', 'invalid_ship_from_pincode'];
-                validationFlags = validationFlags.filter(flag => !fromInvalidFlags.includes(flag));
-                
-                // Add specific invalid flags based on error_details from validation result
-                const fromErrorDetails = validationResult.from_address?.error_details || [];
-                let fromFlagAdded = false;
-                if (fromErrorDetails.length > 0) {
-                  fromErrorDetails.forEach((detail: string) => {
-                    if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_from_address')) {
-                      validationFlags.push('invalid_ship_from_address');
-                      fromFlagAdded = true;
-                    } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_from_city')) {
-                      validationFlags.push('invalid_ship_from_city');
-                      fromFlagAdded = true;
-                    } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_from_pincode')) {
-                      validationFlags.push('invalid_ship_from_pincode');
-                      fromFlagAdded = true;
-                    } else if (detail === 'invalid_address' && !validationFlags.includes('invalid_ship_from_address')) {
-                      // Handle general invalid_address error detail
-                      validationFlags.push('invalid_ship_from_address');
-                      fromFlagAdded = true;
-                    }
-                  });
-                }
-                // Always ensure invalid_ship_from_address flag is set if fromValid is false
-                if (!fromFlagAdded && !validationFlags.includes('invalid_ship_from_address')) {
-                  validationFlags.push('invalid_ship_from_address');
-                }
+              const messages = validationResult.validation_messages || [];
+              if (messages.length > 0) {
+                message.warning(`Address validation issues: ${messages.join(', ')}`);
               }
-              
-              // Handle to address
-              if (toValid) {
-                // To address is valid - remove all to address invalid flags
-                const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
-                validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
-              } else {
-                // To address is invalid - ensure invalid flag is set
-                // Remove existing to address flags first to avoid duplicates
-                const toInvalidFlags = ['invalid_ship_to_address', 'invalid_ship_to_city', 'invalid_ship_to_pincode'];
-                validationFlags = validationFlags.filter(flag => !toInvalidFlags.includes(flag));
-                
-                // Add specific invalid flags based on error_details from validation result
-                const toErrorDetails = validationResult.to_address?.error_details || [];
-                let toFlagAdded = false;
-                if (toErrorDetails.length > 0) {
-                  toErrorDetails.forEach((detail: string) => {
-                    if (detail === 'invalid_street' && !validationFlags.includes('invalid_ship_to_address')) {
-                      validationFlags.push('invalid_ship_to_address');
-                      toFlagAdded = true;
-                    } else if (detail === 'invalid_city' && !validationFlags.includes('invalid_ship_to_city')) {
-                      validationFlags.push('invalid_ship_to_city');
-                      toFlagAdded = true;
-                    } else if (detail === 'invalid_pincode' && !validationFlags.includes('invalid_ship_to_pincode')) {
-                      validationFlags.push('invalid_ship_to_pincode');
-                      toFlagAdded = true;
-                    } else if (detail === 'invalid_address' && !validationFlags.includes('invalid_ship_to_address')) {
-                      // Handle general invalid_address error detail
-                      validationFlags.push('invalid_ship_to_address');
-                      toFlagAdded = true;
-                    }
-                  });
-                }
-                // Always ensure invalid_ship_to_address flag is set if toValid is false
-                if (!toFlagAdded && !validationFlags.includes('invalid_ship_to_address')) {
-                  validationFlags.push('invalid_ship_to_address');
-                }
-              }
-              
-              // Keep status as invalid if any address is invalid
-              await shipmentService.updateShipment(updatedShipment.id, { 
-                status: 'invalid',
-                validation_flags: validationFlags
-              });
-              const invalidParts = [];
-              if (!fromValid) invalidParts.push('Ship From');
-              if (!toValid) invalidParts.push('Ship To');
-              message.warning(`Address validation failed for: ${invalidParts.join(' and ')}. Status remains invalid.`);
             }
-            
-            // Refresh shipment to get updated status and flags
-            const refreshed = await shipmentService.getShipment(updatedShipment.id);
-            dispatch(updateShipment(refreshed));
-          } catch (validationError: any) {
-            console.error('Error validating addresses:', validationError);
-            // If validation fails, still refresh the shipment
-            const refreshed = await shipmentService.getShipment(updatedShipment.id);
-            dispatch(updateShipment(refreshed));
-            message.warning('Address updated but validation check failed. Please verify addresses manually.');
+          } catch (error: any) {
+            console.error('Address validation error:', error);
+            message.error('Failed to validate addresses');
           } finally {
-            // Remove loading state
             setValidatingAddresses(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(editingShipment.id);
-              return newSet;
+              const next = new Set(prev);
+              next.delete(editingShipment.id);
+              return next;
             });
           }
         })();
+        
+        // Return early - validation happens in background
+        message.success('Address updated successfully. Validating addresses...');
+        return;
         
         // Return early - validation happens in background
         message.success('Address updated successfully. Validating addresses...');
@@ -448,6 +306,26 @@ const Step2Review: React.FC = () => {
       
       await shipmentService.bulkUpdate(selectedShipments, updateData);
       
+      // Trigger address validation for all updated shipments
+      setValidatingAddresses(new Set(selectedShipments));
+      try {
+        const validationPromises = selectedShipments.map(async (id) => {
+          try {
+            const validationResult = await shipmentService.validateAllAddresses(id);
+            console.log(`Validation result for shipment ${id}:`, validationResult);
+            return validationResult;
+          } catch (error) {
+            console.error(`Failed to validate addresses for shipment ${id}:`, error);
+            return null;
+          }
+        });
+        await Promise.all(validationPromises);
+      } catch (error) {
+        console.error('Error during validation:', error);
+      } finally {
+        setValidatingAddresses(new Set());
+      }
+      
       // Fetch only the updated shipments instead of all shipments
       const updatedShipments = await Promise.all(
         selectedShipments.map(id => shipmentService.getShipment(id))
@@ -478,6 +356,7 @@ const Step2Review: React.FC = () => {
       }
     } catch (error) {
       message.error('Failed to update shipments');
+      setValidatingAddresses(new Set());
     }
   };
 
@@ -978,11 +857,55 @@ const Step2Review: React.FC = () => {
       showSorterTooltip: false,
       render: (status: string, record: Shipment) => {
         const isValidating = validatingAddresses.has(record.id);
+        const validationError = record.address_validation_error;
+        const flags = record.validation_flags || [];
+        
+        // Check if addresses have validation errors
+        const hasFromError = flags.some(f => f.startsWith('invalid_ship_from'));
+        const hasToError = flags.some(f => f.startsWith('invalid_ship_to'));
+        const hasValidationErrors = hasFromError || hasToError || !!validationError;
+        
+        // Check if addresses are valid (no validation error and not invalid status)
+        const addressesValid = !hasValidationErrors && status !== 'invalid' && !validationError;
+        
+        // Parse validation messages if they exist
+        const validationMessages: string[] = [];
+        if (validationError) {
+          // Split by newline to get separate messages
+          const lines = validationError.split('\n').filter(p => p.trim());
+          validationMessages.push(...lines.map(p => p.trim()));
+        } else if (hasValidationErrors) {
+          // If we have validation flags but no error message, create messages from flags
+          if (hasFromError) {
+            validationMessages.push('Ship From: Address validation failed');
+          }
+          if (hasToError) {
+            validationMessages.push('Ship To: Address validation failed');
+          }
+        }
+        
         return (
-          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            {getStatusTag(status, record)}
-            {isValidating && (
-              <Spin size="small" />
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 150 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              {addressesValid ? (
+                <Tag color="success" icon={<CheckCircleOutlined />} style={{ fontSize: '11px', padding: '2px 8px', lineHeight: '18px', margin: 0 }}>
+                  Valid
+                </Tag>
+              ) : (
+                getStatusTag(status, record)
+              )}
+              {isValidating && (
+                <Spin size="small" />
+              )}
+            </div>
+            {validationMessages.length > 0 && (
+              <div style={{ fontSize: '11px', color: '#ff4d4f', lineHeight: '1.4', marginTop: 4 }}>
+                <ul style={{ margin: 0, paddingLeft: 16, listStyle: 'disc' }}>
+                  {validationMessages.map((msg, idx) => (
+                    <li key={idx} style={{ marginBottom: 2 }}>{msg}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         );
@@ -1787,19 +1710,13 @@ const Step2Review: React.FC = () => {
         title="Change Ship From Address for Selected"
         open={bulkActionModal === 'address'}
         onCancel={() => setBulkActionModal(null)}
-        onOk={() => setBulkActionModal(null)}
         centered
         mask={true}
         maskClosable={false}
-        okText="Close"
-        cancelText="Cancel"
         width={700}
         footer={[
           <Button key="cancel" onClick={() => setBulkActionModal(null)}>
             Cancel
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setBulkActionModal(null)}>
-            Close
           </Button>,
         ]}
       >
@@ -1859,17 +1776,70 @@ const Step2Review: React.FC = () => {
                 handleBulkAddressChange(value, 'from');
                 setBulkActionModal(null);
               }}
+              tagRender={(props) => {
+                const { label, value, closable, onClose } = props;
+                const addr = savedAddresses.find(a => a.id === value);
+                if (!addr) return <span>{label}</span>;
+                
+                // Format selected value to match dropdown format
+                return (
+                  <span onMouseDown={(e) => e.preventDefault()}>
+                    <span style={{ marginRight: 4 }}>
+                      {addr.is_default && <StarFilled style={{ color: '#faad14', fontSize: '12px' }} />}
+                    </span>
+                    <strong>{`${addr.first_name} ${addr.last_name || ''}`.trim()}</strong>
+                    {addr.phone && (
+                      <span style={{ color: '#8c8c8c', fontSize: '12px', marginLeft: 4 }}>
+                        {addr.phone}
+                      </span>
+                    )}
+                    <span style={{ color: '#595959', marginLeft: 4 }}>
+                      - {addr.city}, {addr.state}
+                    </span>
+                  </span>
+                );
+              }}
             >
               {savedAddresses.map(addr => {
-                const fullAddress = [
+                // Format address to match Master table display
+                const formattedAddress = (
+                  <div style={{ padding: '4px 0' }}>
+                    <div style={{ marginBottom: 4 }}>
+                      <Space>
+                        {addr.is_default && <StarFilled style={{ color: '#faad14' }} />}
+                      </Space>
+                    </div>
+                    <div style={{ marginBottom: 4 }}>
+                      <strong>{`${addr.first_name} ${addr.last_name || ''}`.trim()}</strong>
+                      {addr.phone && (
+                        <span style={{ color: '#8c8c8c', fontSize: '13px', marginLeft: 8 }}>
+                          {addr.phone}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ color: '#595959', lineHeight: '1.6' }}>
+                      <div>{addr.address}</div>
+                      {addr.address2 && <div>{addr.address2}</div>}
+                      <div>{`${addr.city}, ${addr.state} ${addr.zip_code}`}</div>
+                    </div>
+                  </div>
+                );
+                
+                // Create searchable label for filter
+                const searchLabel = [
                   addr.name,
+                  `${addr.first_name} ${addr.last_name || ''}`.trim(),
+                  addr.phone,
                   addr.address,
                   addr.address2,
-                  `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
-                ].filter(Boolean).join(', ');
+                  addr.city,
+                  addr.state,
+                  addr.zip_code
+                ].filter(Boolean).join(' ').toLowerCase();
+                
                 return (
-                  <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
-                    {fullAddress}
+                  <Select.Option key={addr.id} value={addr.id} label={searchLabel}>
+                    {formattedAddress}
                   </Select.Option>
                 );
               })}
@@ -1882,19 +1852,13 @@ const Step2Review: React.FC = () => {
         title="Change Ship To Address for Selected"
         open={bulkActionModal === 'to_address'}
         onCancel={() => setBulkActionModal(null)}
-        onOk={() => setBulkActionModal(null)}
         centered
         mask={true}
         maskClosable={false}
-        okText="Close"
-        cancelText="Cancel"
         width={700}
         footer={[
           <Button key="cancel" onClick={() => setBulkActionModal(null)}>
             Cancel
-          </Button>,
-          <Button key="close" type="primary" onClick={() => setBulkActionModal(null)}>
-            Close
           </Button>,
         ]}
       >
@@ -1954,17 +1918,76 @@ const Step2Review: React.FC = () => {
                 handleBulkAddressChange(value, 'to');
                 setBulkActionModal(null);
               }}
+              tagRender={(props) => {
+                const { label, value, closable, onClose } = props;
+                const addr = savedToAddresses.find(a => a.id === value);
+                if (!addr) return <span>{label}</span>;
+                
+                // Format selected value to match dropdown format
+                return (
+                  <span onMouseDown={(e) => e.preventDefault()}>
+                    <span style={{ marginRight: 4 }}>
+                      {addr.is_default && <StarFilled style={{ color: '#faad14', fontSize: '12px' }} />}
+                    </span>
+                    {addr.name && (
+                      <strong style={{ fontSize: '13px', marginRight: 4 }}>{addr.name}</strong>
+                    )}
+                    <strong>{`${addr.first_name} ${addr.last_name || ''}`.trim()}</strong>
+                    {addr.phone && (
+                      <span style={{ color: '#8c8c8c', fontSize: '12px', marginLeft: 4 }}>
+                        {addr.phone}
+                      </span>
+                    )}
+                    <span style={{ color: '#595959', marginLeft: 4 }}>
+                      - {addr.city}, {addr.state}
+                    </span>
+                  </span>
+                );
+              }}
             >
               {savedToAddresses.map(addr => {
-                const fullAddress = [
+                // Format address to match Master table display
+                const formattedAddress = (
+                  <div style={{ padding: '4px 0' }}>
+                    <div style={{ marginBottom: 4 }}>
+                      <Space>
+                        {addr.is_default && <StarFilled style={{ color: '#faad14' }} />}
+                        {addr.name && (
+                          <strong style={{ fontSize: '15px' }}>{addr.name}</strong>
+                        )}
+                      </Space>
+                    </div>
+                    <div style={{ marginBottom: 4 }}>
+                      <strong>{`${addr.first_name} ${addr.last_name || ''}`.trim()}</strong>
+                      {addr.phone && (
+                        <span style={{ color: '#8c8c8c', fontSize: '13px', marginLeft: 8 }}>
+                          {addr.phone}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ color: '#595959', lineHeight: '1.6' }}>
+                      <div>{addr.address}</div>
+                      {addr.address2 && <div>{addr.address2}</div>}
+                      <div>{`${addr.city}, ${addr.state} ${addr.zip_code}`}</div>
+                    </div>
+                  </div>
+                );
+                
+                // Create searchable label for filter
+                const searchLabel = [
                   addr.name,
+                  `${addr.first_name} ${addr.last_name || ''}`.trim(),
+                  addr.phone,
                   addr.address,
                   addr.address2,
-                  `${addr.city}, ${addr.state} ${addr.zip_code}`.trim()
-                ].filter(Boolean).join(', ');
+                  addr.city,
+                  addr.state,
+                  addr.zip_code
+                ].filter(Boolean).join(' ').toLowerCase();
+                
                 return (
-                  <Select.Option key={addr.id} value={addr.id} label={fullAddress}>
-                    {fullAddress}
+                  <Select.Option key={addr.id} value={addr.id} label={searchLabel}>
+                    {formattedAddress}
                   </Select.Option>
                 );
               })}

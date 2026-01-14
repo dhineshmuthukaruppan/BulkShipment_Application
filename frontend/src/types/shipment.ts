@@ -43,6 +43,7 @@ export interface Shipment {
   address_validated: boolean;
   address_validation_api_used: string;
   address_corrections: string[];
+  address_validation_error?: string; // Error message if address validation failed
   process_date: string | null; // Date when the order was processed (for dashboard analytics)
   formatted_from_address: string;
   formatted_to_address: string;

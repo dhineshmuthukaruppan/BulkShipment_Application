@@ -19,6 +19,7 @@ import {
   InputNumber,
   Empty,
   Skeleton,
+  Select,
 } from 'antd';
 import {
   PlusOutlined,
@@ -194,7 +195,17 @@ const Master: React.FC<MasterProps> = () => {
     try {
       // Determine address type based on active tab
       const addressType = activeTab === 'ship-to' ? 'to' : 'from';
-      const addressData = { ...values, address_type: addressType };
+      
+      // For ship-from addresses, auto-generate name if not provided
+      let addressData = { ...values, address_type: addressType };
+      if (addressType === 'from' && !addressData.name) {
+        // Generate name from address components
+        const city = addressData.city || '';
+        const state = addressData.state || '';
+        const addressLine = addressData.address || '';
+        // Use first part of address or city/state as name
+        addressData.name = addressLine.split(',')[0].trim() || `${city}, ${state}`.trim() || 'Ship From Address';
+      }
       
       if (editingAddress) {
         await savedAddressService.update(editingAddress.id, addressData);
@@ -264,12 +275,17 @@ const Master: React.FC<MasterProps> = () => {
   const getFilteredAddresses = () => {
     const addresses = activeTab === 'ship-from' ? shipFromAddresses : shipToAddresses;
     if (!searchText) return addresses;
+    const searchLower = searchText.toLowerCase();
     return addresses.filter(
       (addr) =>
-        addr.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        addr.address.toLowerCase().includes(searchText.toLowerCase()) ||
-        addr.city.toLowerCase().includes(searchText.toLowerCase()) ||
-        addr.state.toLowerCase().includes(searchText.toLowerCase())
+        (activeTab === 'ship-to' && addr.name && addr.name.toLowerCase().includes(searchLower)) ||
+        `${addr.first_name} ${addr.last_name || ''}`.trim().toLowerCase().includes(searchLower) ||
+        addr.address.toLowerCase().includes(searchLower) ||
+        (addr.address2 && addr.address2.toLowerCase().includes(searchLower)) ||
+        addr.city.toLowerCase().includes(searchLower) ||
+        addr.state.toLowerCase().includes(searchLower) ||
+        addr.zip_code.toLowerCase().includes(searchLower) ||
+        (addr.phone && addr.phone.toLowerCase().includes(searchLower))
     );
   };
 
@@ -284,45 +300,32 @@ const Master: React.FC<MasterProps> = () => {
   // Address columns
   const addressColumns: ColumnsType<SavedAddress> = [
     {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
-      render: (text, record) => (
-        <Space>
-          {record.is_default && <StarFilled style={{ color: '#faad14' }} />}
-          <strong>{text}</strong>
-        </Space>
-      ),
-    },
-    {
-      title: 'Contact',
-      key: 'contact',
+      title: 'Shipping Address',
+      key: 'shipping_address',
       render: (_, record) => (
         <div>
-          <div>{`${record.first_name} ${record.last_name || ''}`.trim()}</div>
-          {record.phone && <div style={{ color: '#8c8c8c', fontSize: '14px' }}>{record.phone}</div>}
+          <div style={{ marginBottom: 4 }}>
+            <Space>
+              {record.is_default && <StarFilled style={{ color: '#faad14' }} />}
+              {activeTab === 'ship-to' && record.name && (
+                <strong style={{ fontSize: '15px' }}>{record.name}</strong>
+              )}
+            </Space>
+          </div>
+          <div style={{ marginBottom: 4 }}>
+            <strong>{`${record.first_name} ${record.last_name || ''}`.trim()}</strong>
+            {record.phone && (
+              <span style={{ color: '#8c8c8c', fontSize: '13px', marginLeft: 8 }}>
+                {record.phone}
+              </span>
+            )}
+          </div>
+          <div style={{ color: '#595959', lineHeight: '1.6' }}>
+            <div>{record.address}</div>
+            {record.address2 && <div>{record.address2}</div>}
+            <div>{`${record.city}, ${record.state} ${record.zip_code}`}</div>
+          </div>
         </div>
-      ),
-    },
-    {
-      title: 'Address',
-      key: 'address',
-      render: (_, record) => (
-        <div>
-          <div>{record.address}</div>
-          {record.address2 && <div>{record.address2}</div>}
-          <div>{`${record.city}, ${record.state} ${record.zip_code}`}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (_, record) => (
-        <Space>
-          {record.is_default && <Tag color="gold">Default</Tag>}
-        </Space>
       ),
     },
     {
@@ -796,16 +799,18 @@ const Master: React.FC<MasterProps> = () => {
           className="master-form"
         >
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="name"
-                label="Address Name"
-                rules={[{ required: true, message: 'Please enter address name' }]}
-              >
-                <Input placeholder="e.g., Main Warehouse" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
+            {activeTab === 'ship-to' && (
+              <Col span={12}>
+                <Form.Item
+                  name="name"
+                  label="Address Name"
+                  rules={[{ required: true, message: 'Please enter address name' }]}
+                >
+                  <Input placeholder="e.g., Main Warehouse" />
+                </Form.Item>
+              </Col>
+            )}
+            <Col span={activeTab === 'ship-to' ? 12 : 24}>
               <Form.Item name="is_default" valuePropName="checked" label=" ">
                 <Space>
                   <Switch />
@@ -859,11 +864,79 @@ const Master: React.FC<MasterProps> = () => {
                 name="state"
                 label="State"
                 rules={[
-                  { required: true, message: 'Please enter state' },
+                  { required: true, message: 'Please select state' },
                   { len: 2, message: 'State must be 2 characters' },
                 ]}
               >
-                <Input placeholder="State" maxLength={2} style={{ textTransform: 'uppercase' }} />
+                <Select 
+                  placeholder="Select state"
+                  showSearch
+                  filterOption={(input: string, option: any) => {
+                    const searchText = input.toLowerCase();
+                    const label = String(option?.label || '').toLowerCase();
+                    const value = String(option?.value || '').toLowerCase();
+                    return label.includes(searchText) || value.includes(searchText);
+                  }}
+                  options={[
+                    // US States as per PRD Appendix B: AL, AK, AZ, AR, CA, CO, CT, DE, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, MD, MA, MI, MN, MS, MO, MT, NE, NV, NH, NJ, NM, NY, NC, ND, OH, OK, OR, PA, RI, SC, SD, TN, TX, UT, VT, VA, WA, WV, WI, WY
+                    // Plus territories: PR (Puerto Rico), DC (District of Columbia)
+                    { code: 'AL', name: 'Alabama' },
+                    { code: 'AK', name: 'Alaska' },
+                    { code: 'AZ', name: 'Arizona' },
+                    { code: 'AR', name: 'Arkansas' },
+                    { code: 'CA', name: 'California' },
+                    { code: 'CO', name: 'Colorado' },
+                    { code: 'CT', name: 'Connecticut' },
+                    { code: 'DE', name: 'Delaware' },
+                    { code: 'FL', name: 'Florida' },
+                    { code: 'GA', name: 'Georgia' },
+                    { code: 'HI', name: 'Hawaii' },
+                    { code: 'ID', name: 'Idaho' },
+                    { code: 'IL', name: 'Illinois' },
+                    { code: 'IN', name: 'Indiana' },
+                    { code: 'IA', name: 'Iowa' },
+                    { code: 'KS', name: 'Kansas' },
+                    { code: 'KY', name: 'Kentucky' },
+                    { code: 'LA', name: 'Louisiana' },
+                    { code: 'ME', name: 'Maine' },
+                    { code: 'MD', name: 'Maryland' },
+                    { code: 'MA', name: 'Massachusetts' },
+                    { code: 'MI', name: 'Michigan' },
+                    { code: 'MN', name: 'Minnesota' },
+                    { code: 'MS', name: 'Mississippi' },
+                    { code: 'MO', name: 'Missouri' },
+                    { code: 'MT', name: 'Montana' },
+                    { code: 'NE', name: 'Nebraska' },
+                    { code: 'NV', name: 'Nevada' },
+                    { code: 'NH', name: 'New Hampshire' },
+                    { code: 'NJ', name: 'New Jersey' },
+                    { code: 'NM', name: 'New Mexico' },
+                    { code: 'NY', name: 'New York' },
+                    { code: 'NC', name: 'North Carolina' },
+                    { code: 'ND', name: 'North Dakota' },
+                    { code: 'OH', name: 'Ohio' },
+                    { code: 'OK', name: 'Oklahoma' },
+                    { code: 'OR', name: 'Oregon' },
+                    { code: 'PA', name: 'Pennsylvania' },
+                    { code: 'RI', name: 'Rhode Island' },
+                    { code: 'SC', name: 'South Carolina' },
+                    { code: 'SD', name: 'South Dakota' },
+                    { code: 'TN', name: 'Tennessee' },
+                    { code: 'TX', name: 'Texas' },
+                    { code: 'UT', name: 'Utah' },
+                    { code: 'VT', name: 'Vermont' },
+                    { code: 'VA', name: 'Virginia' },
+                    { code: 'WA', name: 'Washington' },
+                    { code: 'WV', name: 'West Virginia' },
+                    { code: 'WI', name: 'Wisconsin' },
+                    { code: 'WY', name: 'Wyoming' },
+                    { code: 'DC', name: 'District of Columbia' },
+                    { code: 'PR', name: 'Puerto Rico' },
+                  ].map(state => ({ 
+                    label: `${state.name} (${state.code})`, 
+                    value: state.code 
+                  }))}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
