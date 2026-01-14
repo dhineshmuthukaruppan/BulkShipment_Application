@@ -36,30 +36,65 @@ A comprehensive web application for bulk shipping label creation with advanced w
 
 ## Quick Start
 
+### ⚠️ IMPORTANT: PostgreSQL is Required
+
+This application uses **PostgreSQL only** (no SQLite). You must install and configure PostgreSQL before running the application.
+
+**See `SETUP_GUIDE_FOR_NEW_DEVELOPERS.md` for complete setup instructions.**
+
 ### Backend Setup
 
-1. Navigate to backend directory:
+1. **Install PostgreSQL** (Required):
+   ```bash
+   # macOS
+   brew install postgresql@14
+   brew services start postgresql@14
+   
+   # Ubuntu/Debian
+   sudo apt-get install postgresql postgresql-contrib
+   sudo systemctl start postgresql
+   ```
+
+2. **Create Database and User**:
+   ```bash
+   # macOS
+   /opt/homebrew/opt/postgresql@14/bin/createdb shipping_db
+   /opt/homebrew/opt/postgresql@14/bin/psql -d postgres -c "CREATE USER shipping_user WITH PASSWORD 'shipping_secure_pass_2026';"
+   /opt/homebrew/opt/postgresql@14/bin/psql -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE shipping_db TO shipping_user;"
+   
+   # Ubuntu/Debian
+   sudo -u postgres psql
+   # Then run: CREATE DATABASE shipping_db; CREATE USER shipping_user WITH PASSWORD 'your_password'; GRANT ALL PRIVILEGES ON DATABASE shipping_db TO shipping_user;
+   ```
+
+3. Navigate to backend directory:
 ```bash
 cd backend
 ```
 
-2. Create and activate virtual environment:
+4. Create and activate virtual environment:
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies:
+5. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Run migrations:
+6. **Create `.env` file** (Required):
+```bash
+cp .env.example .env
+# Edit .env with your database credentials
+```
+
+7. Run migrations:
 ```bash
 python manage.py migrate
 ```
 
-5. Start development server:
+8. Start development server:
 ```bash
 python manage.py runserver
 ```

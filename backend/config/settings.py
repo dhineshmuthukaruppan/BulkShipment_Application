@@ -11,6 +11,11 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -93,11 +98,44 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
+# PRODUCTION-GRADE: PostgreSQL only (no SQLite fallback)
+# All database configuration via environment variables
 
+# Get PostgreSQL configuration from environment variables
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '5432')
+
+# Validate required database configuration
+if not DB_NAME or not DB_USER or not DB_PASSWORD:
+    raise ValueError(
+        "PostgreSQL database configuration is required. "
+        "Please set the following environment variables:\n"
+        "  - DB_NAME: Database name\n"
+        "  - DB_USER: Database user\n"
+        "  - DB_PASSWORD: Database password\n"
+        "  - DB_HOST: Database host (default: localhost)\n"
+        "  - DB_PORT: Database port (default: 5432)\n"
+        "\n"
+        "Create a .env file in the backend/ directory with these variables.\n"
+        "See .env.example for a template."
+    )
+
+# PostgreSQL configuration (Production-grade)
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': DB_NAME,
+        'USER': DB_USER,
+        'PASSWORD': DB_PASSWORD,
+        'HOST': DB_HOST,
+        'PORT': DB_PORT,
+        'OPTIONS': {
+            'connect_timeout': 10,
+        },
+        'CONN_MAX_AGE': 600,  # Connection pooling for better performance
     }
 }
 
@@ -209,11 +247,8 @@ LOGGING = {
     },
 }
 
-# Environment variables
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+# Environment variables are loaded at the top of the file
+# (moved to top to ensure database config can access them)
 
 # Address Validation API Keys
 # Priority: USPS Addresses 3.0 > USPS Web Tools (Legacy) > Google Maps > SmartyStreets > Lob > Basic validation

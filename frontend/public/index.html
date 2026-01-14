@@ -28,6 +28,25 @@
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
+    <!-- Initialize theme synchronously before React renders to prevent flicker -->
+    <script>
+      (function() {
+        try {
+          var theme = localStorage.getItem('shipping_pro_theme');
+          var validTheme = (theme === 'dark' || theme === 'light') ? theme : 'light';
+          document.body.setAttribute('data-theme', validTheme);
+          document.body.style.colorScheme = validTheme;
+          var root = document.getElementById('root');
+          if (root) {
+            root.setAttribute('data-theme', validTheme);
+          }
+        } catch (e) {
+          // Fallback to light theme if localStorage fails
+          document.body.setAttribute('data-theme', 'light');
+          document.body.style.colorScheme = 'light';
+        }
+      })();
+    </script>
     <div id="root"></div>
     <!--
       This HTML file is a template.
