@@ -305,6 +305,8 @@ if IS_PRODUCTION:
         CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',')]
     else:
         CORS_ALLOWED_ORIGINS = [
+            "https://frontend-phi-three-66.vercel.app",
+            "https://frontend-o94p5b365-dhineshmuthukaruppan-9911s-projects.vercel.app",
             "https://bulk-shipping-frontend.vercel.app",
             "https://bulk-shipping-frontend.netlify.app",
         ]
