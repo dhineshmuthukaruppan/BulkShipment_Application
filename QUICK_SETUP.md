@@ -43,6 +43,16 @@ Then create database using pgAdmin or command line.
 ### 2. Create Database
 
 **macOS:**
+
+If PostgreSQL is in your PATH (check with `which psql`):
+```bash
+createdb shipping_db
+psql -d postgres -c "CREATE USER shipping_user WITH PASSWORD 'shipping_secure_pass_2026';"
+psql -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE shipping_db TO shipping_user;"
+psql -d shipping_db -c "GRANT ALL ON SCHEMA public TO shipping_user;"
+```
+
+If PostgreSQL is not in PATH, use the full path:
 ```bash
 /opt/homebrew/opt/postgresql@14/bin/createdb shipping_db
 /opt/homebrew/opt/postgresql@14/bin/psql -d postgres -c "CREATE USER shipping_user WITH PASSWORD 'shipping_secure_pass_2026';"
@@ -156,10 +166,17 @@ Your application is now running with PostgreSQL.
 → `pip install -r requirements.txt`
 
 **"Connection refused"**
-→ Start PostgreSQL: `brew services start postgresql@14` (macOS)
+→ Start PostgreSQL: 
+  - macOS: `brew services start postgresql@14` or `brew services start postgresql`
+  - Ubuntu/Debian: `sudo systemctl start postgresql`
+  - Verify it's running: `psql --version` should work without errors
 
 **"role 'shipping_user' does not exist"**
 → Run Step 2 to create database and user
+
+**"Database connection failed"**
+→ Verify PostgreSQL is running and check your `.env` file has correct credentials
+→ Test connection: `psql -U shipping_user -d shipping_db -h localhost`
 
 ---
 
