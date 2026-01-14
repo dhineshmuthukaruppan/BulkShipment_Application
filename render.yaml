@@ -48,9 +48,9 @@ services:
       - key: SMARTY_AUTH_TOKEN
         sync: false  # Set this in Render dashboard
 
+databases:
   # PostgreSQL Database
-  - type: postgres
-    name: bulk-shipping-db
+  - name: bulk-shipping-db
     plan: free
     databaseName: shipping_db
-    databaseUser: shipping_user
+    user: shipping_user
