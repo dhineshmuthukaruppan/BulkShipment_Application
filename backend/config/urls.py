@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
 from shipping_app.views import ShipmentViewSet, SavedAddressViewSet, SavedPackageViewSet, OrderNumberSettingsViewSet
 
@@ -25,7 +26,21 @@ router.register(r'saved-addresses', SavedAddressViewSet, basename='saved-address
 router.register(r'saved-packages', SavedPackageViewSet, basename='saved-package')
 router.register(r'order-number-settings', OrderNumberSettingsViewSet, basename='order-number-settings')
 
+def api_root(request):
+    """Simple API root endpoint"""
+    return JsonResponse({
+        'message': 'Bulk Shipping API',
+        'version': '1.0',
+        'endpoints': {
+            'api': '/api/',
+            'admin': '/admin/',
+            'shipments': '/api/shipments/',
+            'upload_csv': '/api/shipments/upload_csv/',
+        }
+    })
+
 urlpatterns = [
+    path('', api_root, name='api-root'),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
 ]
