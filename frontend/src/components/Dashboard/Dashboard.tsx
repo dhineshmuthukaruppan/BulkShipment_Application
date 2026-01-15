@@ -235,7 +235,7 @@ const Dashboard: React.FC = () => {
                   tick={{ fontSize: 12 }}
                 />
                 <Tooltip 
-                  formatter={(value: any, name: string) => {
+                  formatter={(value: any, name?: string) => {
                     if (name === 'amountSpent') {
                       return [`$${Number(value).toFixed(2)}`, 'Amount Spent ($)'];
                     }
