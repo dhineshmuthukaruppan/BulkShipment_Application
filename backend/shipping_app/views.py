@@ -7,6 +7,9 @@ from django.conf import settings
 from decimal import Decimal
 from datetime import datetime
 import traceback
+import logging
+
+logger = logging.getLogger(__name__)
 
 from shipping_app.models import Shipment, SavedAddress, SavedPackage, OrderNumberSettings
 from shipping_app.serializers import (
@@ -22,6 +25,16 @@ from shipping_app.services import (
     ShippingLogger
 )
 
+# US state codes for country-aware validation
+US_STATE_CODES = {
+    'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+    'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+    'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+    'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+    'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+    'DC'  # District of Columbia
+}
+
 
 class ShipmentViewSet(viewsets.ModelViewSet):
     """
@@ -34,6 +47,13 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     - BULK UPDATE: Uses .save() which persists to DB
     
     Database is the single source of truth. Redux is only for UI state management.
+    
+    NOTE: AddressValidator.validate() MUST be called only from:
+    - batch_validate_addresses endpoint
+    - shipment edit operations
+    - label purchase flow
+    
+    CSV upload uses lightweight validation only (no external API calls).
     """
     queryset = Shipment.objects.all()
     serializer_class = ShipmentSerializer
@@ -110,6 +130,61 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             )
         return response
     
+    def _basic_csv_address_check(self, row_data: dict, prefix: str) -> tuple[list, list]:
+        """
+        Lightweight address validation for CSV upload (no external API calls).
+        Validates only: required fields, ZIP format (5 digits), state format (2 letters).
+        
+        Args:
+            row_data: Row data dictionary
+            prefix: 'from' or 'to' to indicate address type
+            
+        Returns:
+            tuple: (validation_flags, validation_errors)
+        """
+        validation_flags = []
+        validation_errors = []
+        
+        address = row_data.get(f'{prefix}_address', '').strip()
+        city = row_data.get(f'{prefix}_city', '').strip()
+        state = row_data.get(f'{prefix}_state', '').strip().upper()
+        zip_code = row_data.get(f'{prefix}_zip', '').strip()
+        
+        # Check if non-US address (skip validation for non-US)
+        if state and state not in US_STATE_CODES:
+            validation_flags.append('non_us_address')
+            return validation_flags, validation_errors
+        
+        # Check required fields
+        if not address:
+            validation_flags.append(f'invalid_ship_{prefix}_address')
+            validation_errors.append(f"Missing {prefix} address")
+        
+        if not city:
+            validation_flags.append(f'invalid_ship_{prefix}_city')
+            validation_errors.append(f"Missing {prefix} city")
+        
+        # Validate ZIP format (must have at least 5 digits)
+        if zip_code:
+            zip_digits = ''.join(filter(str.isdigit, zip_code))
+            if len(zip_digits) < 5:
+                validation_flags.append(f'invalid_ship_{prefix}_pincode')
+                validation_errors.append(f"Invalid {prefix} ZIP code: must have at least 5 digits")
+        else:
+            validation_flags.append(f'invalid_ship_{prefix}_pincode')
+            validation_errors.append(f"Missing {prefix} ZIP code")
+        
+        # Validate state format (must be 2 letters)
+        if state:
+            if len(state) != 2 or not state.isalpha():
+                validation_flags.append(f'invalid_ship_{prefix}_state')
+                validation_errors.append(f"Invalid {prefix} state format: must be 2-letter code")
+        else:
+            validation_flags.append(f'invalid_ship_{prefix}_state')
+            validation_errors.append(f"Missing {prefix} state")
+        
+        return validation_flags, validation_errors
+    
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_csv(self, request):
         """Upload and parse CSV file"""
@@ -160,6 +235,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             validator = AddressValidator()
             calculator = ShippingCalculator()
             
+            # Two-stage validation approach:
+            # 1. First: Lightweight validation (basic format checks) - filters out obviously invalid addresses
+            # 2. Second: Full validation (AddressValidator.validate()) - only for addresses that pass basic checks
+            
             with transaction.atomic():
                 for row_data in parse_result.get('rows', []):
                     # Apply default sender address if missing
@@ -173,8 +252,43 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                             row_data['from_state'] = default_address.state
                             row_data['from_zip'] = default_address.zip_code
                     
-                    # Validate sender address (if present)
+                    # Initialize validation tracking
+                    validation_flags = row_data.get('validation_flags', [])
+                    validation_errors = row_data.get('validation_errors', [])
+                    from_address_valid = True
+                    to_address_valid = True
+                    
+                    # STAGE 1: Lightweight validation for sender address (if present)
                     if row_data.get('from_address') or row_data.get('from_city') or row_data.get('from_zip'):
+                        from_flags, from_errors = self._basic_csv_address_check(row_data, 'from')
+                        if from_flags or from_errors:
+                            # Basic check failed - mark as invalid, skip full validation
+                            validation_flags.extend([f for f in from_flags if f not in validation_flags])
+                            validation_errors.extend(from_errors)
+                            from_address_valid = False
+                            
+                            # Add error message for non-US addresses
+                            if 'non_us_address' in from_flags:
+                                validation_errors.append("Invalid ship from address: Address not found - invalid address")
+                                row_data['from_address_validation_error'] = "Address not found - invalid address"
+                    
+                    # STAGE 1: Lightweight validation for recipient address
+                    to_flags, to_errors = self._basic_csv_address_check(row_data, 'to')
+                    if to_flags or to_errors:
+                        # Basic check failed - mark as invalid, skip full validation
+                        validation_flags.extend([f for f in to_flags if f not in validation_flags])
+                        validation_errors.extend(to_errors)
+                        to_address_valid = False
+                        
+                        # Add error message for non-US addresses
+                        if 'non_us_address' in to_flags:
+                            validation_errors.append("Invalid ship to address: Address not found - invalid address")
+                            row_data['address_validation_error'] = "Address not found - invalid address"
+                    
+                    # STAGE 2: Full validation for addresses that passed basic checks
+                    # Validate sender address (only if basic check passed and not non-US)
+                    from_validation_result = None
+                    if from_address_valid and row_data.get('from_address') and 'non_us_address' not in validation_flags:
                         from_address = {
                             'first_name': row_data.get('from_first_name', ''),
                             'last_name': row_data.get('from_last_name', ''),
@@ -187,13 +301,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                         
                         from_validation_result = validator.validate(from_address)
                         if not from_validation_result['valid']:
-                            validation_flags = row_data.get('validation_flags', [])
+                            from_address_valid = False
                             error_details = from_validation_result.get('error_details', [])
                             
                             # Only flag specific components if API explicitly provides error_details
-                            # Don't infer specific issues from generic error messages
                             if error_details:
-                                # API provided specific error details - use them
                                 for error_detail in error_details:
                                     if error_detail == 'invalid_city':
                                         if 'invalid_ship_from_city' not in validation_flags:
@@ -205,77 +317,83 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                                         if 'invalid_ship_from_address' not in validation_flags:
                                             validation_flags.append('invalid_ship_from_address')
                             else:
-                                # No specific error details - only flag as general invalid address
-                                # Don't infer specific component issues
                                 if 'invalid_ship_from_address' not in validation_flags:
                                     validation_flags.append('invalid_ship_from_address')
                             
-                            row_data['validation_flags'] = validation_flags
-                            # Set address validation error for from address
                             error_message = from_validation_result.get('error', 'Address could not be validated')
                             row_data['from_address_validation_error'] = error_message
-                            # Add to validation errors
-                            validation_errors = row_data.get('validation_errors', [])
                             validation_errors.append(f"Invalid ship from address: {error_message}")
-                            row_data['validation_errors'] = validation_errors
                     
-                    # Validate recipient address
-                    to_address = {
-                        'first_name': row_data.get('to_first_name', ''),
-                        'last_name': row_data.get('to_last_name', ''),
-                        'address': row_data.get('to_address', ''),
-                        'address2': row_data.get('to_address2', ''),
-                        'city': row_data.get('to_city', ''),
-                        'state': row_data.get('to_state', ''),
-                        'zip': row_data.get('to_zip', ''),
-                    }
-                    
-                    validation_result = validator.validate(to_address)
-                    if validation_result['valid']:
-                        # Update with corrected address
-                        corrected = validation_result['corrected_address']
-                        row_data['to_address'] = corrected.get('address', row_data.get('to_address'))
-                        row_data['to_city'] = corrected.get('city', row_data.get('to_city'))
-                        row_data['to_state'] = corrected.get('state', row_data.get('to_state'))
-                        row_data['to_zip'] = corrected.get('zip', row_data.get('to_zip'))
+                    # STAGE 2: Full validation for recipient address (only if basic check passed and not non-US)
+                    to_validation_result = None
+                    if to_address_valid and 'non_us_address' not in validation_flags:
+                        to_address = {
+                            'first_name': row_data.get('to_first_name', ''),
+                            'last_name': row_data.get('to_last_name', ''),
+                            'address': row_data.get('to_address', ''),
+                            'address2': row_data.get('to_address2', ''),
+                            'city': row_data.get('to_city', ''),
+                            'state': row_data.get('to_state', ''),
+                            'zip': row_data.get('to_zip', ''),
+                        }
                         
-                        row_data['address_validated'] = True
-                        row_data['address_validation_api_used'] = validation_result['api_used']
-                        row_data['address_corrections'] = validation_result.get('corrections', [])
-                    else:
-                        # Address is invalid - flag specific issues only if API provides them
-                        validation_flags = row_data.get('validation_flags', [])
-                        error_details = validation_result.get('error_details', [])
-                        
-                        # Only flag specific components if API explicitly provides error_details
-                        # Don't infer specific issues from generic error messages
-                        if error_details:
-                            # API provided specific error details - use them
-                            for error_detail in error_details:
-                                if error_detail == 'invalid_city':
-                                    if 'invalid_ship_to_city' not in validation_flags:
-                                        validation_flags.append('invalid_ship_to_city')
-                                elif error_detail == 'invalid_pincode':
-                                    if 'invalid_ship_to_pincode' not in validation_flags:
-                                        validation_flags.append('invalid_ship_to_pincode')
-                                elif error_detail == 'invalid_street':
-                                    if 'invalid_ship_to_address' not in validation_flags:
-                                        validation_flags.append('invalid_ship_to_address')
+                        to_validation_result = validator.validate(to_address)
+                        if to_validation_result['valid']:
+                            # Update with corrected address
+                            corrected = to_validation_result['corrected_address']
+                            row_data['to_address'] = corrected.get('address', row_data.get('to_address'))
+                            row_data['to_city'] = corrected.get('city', row_data.get('to_city'))
+                            row_data['to_state'] = corrected.get('state', row_data.get('to_state'))
+                            row_data['to_zip'] = corrected.get('zip', row_data.get('to_zip'))
                         else:
-                            # No specific error details - only flag as general invalid address
-                            # Don't infer specific component issues
-                            if 'invalid_ship_to_address' not in validation_flags:
-                                validation_flags.append('invalid_ship_to_address')
-                        
-                        row_data['validation_flags'] = validation_flags
+                            to_address_valid = False
+                            error_details = to_validation_result.get('error_details', [])
+                            
+                            # Only flag specific components if API explicitly provides error_details
+                            if error_details:
+                                for error_detail in error_details:
+                                    if error_detail == 'invalid_city':
+                                        if 'invalid_ship_to_city' not in validation_flags:
+                                            validation_flags.append('invalid_ship_to_city')
+                                    elif error_detail == 'invalid_pincode':
+                                        if 'invalid_ship_to_pincode' not in validation_flags:
+                                            validation_flags.append('invalid_ship_to_pincode')
+                                    elif error_detail == 'invalid_street':
+                                        if 'invalid_ship_to_address' not in validation_flags:
+                                            validation_flags.append('invalid_ship_to_address')
+                            else:
+                                if 'invalid_ship_to_address' not in validation_flags:
+                                    validation_flags.append('invalid_ship_to_address')
+                            
+                            error_message = to_validation_result.get('error', 'Address could not be validated')
+                            row_data['address_validation_error'] = error_message
+                            validation_errors.append(f"Invalid address: {error_message}")
+                    
+                    # Set final validation status based on both addresses
+                    if from_address_valid and to_address_valid:
+                        # Both addresses passed full validation
+                        row_data['address_validated'] = True
+                        # Use the API from the last validation (to address takes precedence, or from if to wasn't validated)
+                        if to_validation_result:
+                            row_data['address_validation_api_used'] = to_validation_result['api_used']
+                            row_data['address_corrections'] = to_validation_result.get('corrections', [])
+                        elif from_validation_result:
+                            row_data['address_validation_api_used'] = from_validation_result['api_used']
+                            row_data['address_corrections'] = from_validation_result.get('corrections', [])
+                        row_data['address_validation_error'] = ''
+                    else:
+                        # At least one address failed validation
                         row_data['address_validated'] = False
-                        row_data['address_validation_api_used'] = validation_result.get('api_used', 'Unknown')
-                        error_message = validation_result.get('error', 'Address could not be validated')
-                        row_data['address_validation_error'] = error_message
-                        # Add to validation errors
-                        validation_errors = row_data.get('validation_errors', [])
-                        validation_errors.append(f"Invalid address: {error_message}")
-                        row_data['validation_errors'] = validation_errors
+                        if not row_data.get('address_validation_api_used'):
+                            row_data['address_validation_api_used'] = 'Unknown'
+                        if not row_data.get('address_validation_error'):
+                            row_data['address_validation_error'] = 'Address validation failed'
+                        if not row_data.get('address_corrections'):
+                            row_data['address_corrections'] = []
+                    
+                    # Update row_data with final validation flags and errors
+                    row_data['validation_flags'] = validation_flags
+                    row_data['validation_errors'] = validation_errors
                     
                     # Create shipment
                     shipment = Shipment.objects.create(
@@ -659,6 +777,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         Returns validation results for both addresses and overall status.
         Validates both addresses in parallel for better performance.
         """
+        logger.info("batch_validate_addresses endpoint HIT")
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
         validator = AddressValidator()
@@ -680,14 +799,17 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             
             # Submit validation tasks
             if from_address:
+                logger.info("Submitting from_address validation task")
                 futures['from_address'] = executor.submit(validator.validate, from_address)
             if to_address:
+                logger.info("Submitting to_address validation task")
                 futures['to_address'] = executor.submit(validator.validate, to_address)
             
             # Collect results as they complete
             for key, future in futures.items():
                 try:
                     results[key] = future.result()
+                    logger.info(f"Validation completed for {key}")
                 except Exception as e:
                     # If validation fails, return error result
                     results[key] = {

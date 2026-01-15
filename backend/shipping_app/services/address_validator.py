@@ -6,6 +6,7 @@ Priority: USPS > Google Maps > SmartyStreets > Lob > Basic validation
 import requests
 import re
 import xml.etree.ElementTree as ET
+import base64
 from typing import Dict, Any, Optional, List
 from django.conf import settings
 from django.core.cache import cache
@@ -14,6 +15,12 @@ import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Constants for address validation
+SMARTY_VALID_DPV_CODES = ["Y", "S", "D"]  # Y=Confirmed, S=Missing secondary, D=Single delivery point
+
+def api_debug_log(api, stage, data):
+    logger.info(f"[API-DEBUG] [{api}] [{stage}] → {data}")
 
 
 class AddressValidator:
@@ -58,6 +65,7 @@ class AddressValidator:
                 'error': Optional[str]
             }
         """
+        logger.info("AddressValidator.validate() CALLED")
         # Normalize address input
         normalized = self._normalize_address(address_dict)
         
@@ -166,6 +174,7 @@ class AddressValidator:
         if last_request:
             time_since = time.time() - last_request
             if time_since < self.rate_limit_delay:
+                logger.info(f"[API-DEBUG] [{api_name}] SKIPPED due to rate limit")
                 return False
         return True
     
@@ -173,6 +182,18 @@ class AddressValidator:
         """Update rate limit timestamp"""
         cache_key = f'address_validator_rate_limit_{api_name}'
         cache.set(cache_key, time.time(), timeout=60)
+    
+    def _invalid_response(self, api_name: str, address_dict: Dict[str, Any], error_msg: str = "Invalid address") -> Dict[str, Any]:
+        """Helper method to create standardized invalid response"""
+        error_details = self._analyze_address_fields(address_dict)
+        return {
+            "valid": False,
+            "api_used": api_name,
+            "error": error_msg,
+            "error_details": error_details if error_details else ["invalid_address"],
+            "corrected_address": address_dict,
+            "corrections": []
+        }
     
     def _get_usps_oauth_token(self) -> Optional[str]:
         """Get OAuth access token for USPS Addresses 3.0 API"""
@@ -196,7 +217,13 @@ class AddressValidator:
                 "Content-Type": "application/json"
             }
             
+            api_debug_log("USPS-OAUTH", "REQUEST", oauth_url)
             response = requests.post(oauth_url, json=payload, headers=headers, timeout=self.timeout)
+            api_debug_log(
+                "USPS-OAUTH",
+                "RESPONSE",
+                f"status={response.status_code}, body={response.text[:300]}"
+            )
             
             if response.status_code == 200:
                 data = response.json()
@@ -281,7 +308,13 @@ class AddressValidator:
                 'Content-Type': 'application/json'
             }
             
+            api_debug_log("USPS-V3", "REQUEST", params)
             response = requests.get(url, params=params, headers=headers, timeout=self.timeout)
+            api_debug_log(
+                "USPS-V3",
+                "RESPONSE",
+                f"status={response.status_code}, body={response.text[:300]}"
+            )
             
             if response.status_code == 200:
                 data = response.json()
@@ -421,7 +454,13 @@ class AddressValidator:
                 'XML': xml_request
             }
             
+            api_debug_log("USPS-LEGACY", "REQUEST", xml_request)
             response = requests.get(url, params=params, timeout=self.timeout)
+            api_debug_log(
+                "USPS-LEGACY",
+                "RESPONSE",
+                f"status={response.status_code}, body={response.text[:300]}"
+            )
             
             if response.status_code == 200:
                 # Parse XML response
@@ -540,7 +579,13 @@ class AddressValidator:
                 'key': self.google_api_key
             }
             
+            api_debug_log("GOOGLE-MAPS", "REQUEST", params)
             response = requests.get(url, params=params, timeout=self.timeout)
+            api_debug_log(
+                "GOOGLE-MAPS",
+                "RESPONSE",
+                f"status={response.status_code}, body={response.text[:300]}"
+            )
             
             if response.status_code == 200:
                 data = response.json()
@@ -652,7 +697,13 @@ class AddressValidator:
                 'zipcode': address_dict.get('zip', '').replace('-', '').replace(' ', '')[:5]
             }
             
+            api_debug_log("SMARTY", "REQUEST", params)
             response = requests.get(url, params=params, timeout=self.timeout)
+            api_debug_log(
+                "SMARTY",
+                "RESPONSE",
+                f"status={response.status_code}, body={response.text[:300]}"
+            )
             
             if response.status_code == 200:
                 data = response.json()
@@ -660,26 +711,20 @@ class AddressValidator:
                 if data and len(data) > 0:
                     result = data[0]
                     components = result.get('components', {})
+                    analysis = result.get('analysis', {})
                     metadata = result.get('metadata', {})
                     
-                    # Check if address is deliverable
-                    # SmartyStreets metadata includes precision and RDI (Residential Delivery Indicator)
-                    precision = metadata.get('precision', '')
-                    rdi = metadata.get('rdi', '')
+                    # Extract DPV (Delivery Point Validation) match code safely
+                    # Try analysis.dpv_match_code first, then metadata.dpv_match as fallback
+                    dpv_code = analysis.get('dpv_match_code') or metadata.get('dpv_match_code') or metadata.get('dpv_match')
+                    api_debug_log("SMARTY", "DPV_MATCH", dpv_code)
                     
-                    # If precision is 'Unknown' or RDI indicates undeliverable, mark as invalid
-                    if precision == 'Unknown' or (rdi and rdi not in ['Residential', 'Business', 'Highrise']):
-                        # Analyze which fields might be invalid
-                        error_details = self._analyze_address_fields(address_dict)
-                        
-                        return {
-                            'valid': False,
-                            'api_used': 'SmartyStreets',
-                            'error': 'Address not found or not deliverable',
-                            'error_details': error_details if error_details else ['invalid_address'],
-                            'corrected_address': address_dict,
-                            'corrections': []
-                        }
+                    # Valid DPV codes: Y (Confirmed), S (Missing secondary), D (Single delivery point)
+                    # Invalid: N (Not deliverable) or missing
+                    if not dpv_code or dpv_code == "N" or dpv_code not in SMARTY_VALID_DPV_CODES:
+                        # Address is not deliverable according to DPV match code
+                        api_debug_log("SMARTY", "RESULT", "INVALID")
+                        return self._invalid_response('SmartyStreets', address_dict, 'Address not found or not deliverable')
                     
                     corrected = address_dict.copy()
                     corrections = []
@@ -715,6 +760,7 @@ class AddressValidator:
                         else:
                             corrected['zip'] = zipcode
                     
+                    api_debug_log("SMARTY", "RESULT", "VALID")
                     return {
                         'valid': True,
                         'corrected_address': corrected,
@@ -724,17 +770,8 @@ class AddressValidator:
                     }
                 else:
                     # Empty response means address was not found/invalid
-                    # Analyze which fields might be invalid
-                    error_details = self._analyze_address_fields(address_dict)
-                    
-                    return {
-                        'valid': False,
-                        'api_used': 'SmartyStreets',
-                        'error': 'Address not found - invalid address',
-                        'error_details': error_details if error_details else ['invalid_address'],
-                        'corrected_address': address_dict,
-                        'corrections': []
-                    }
+                    api_debug_log("SMARTY", "RESULT", "INVALID")
+                    return self._invalid_response('SmartyStreets', address_dict, 'Address not found - invalid address')
             elif response.status_code == 401:
                 logger.warning("SmartyStreets API authentication failed")
                 error_details = self._analyze_address_fields(address_dict)
@@ -796,12 +833,19 @@ class AddressValidator:
                 'zip_code': address_dict.get('zip', '').replace('-', '').replace(' ', '')[:5]
             }
             
+            auth = base64.b64encode(f"{self.lob_api_key}:".encode()).decode()
             headers = {
-                'Authorization': f'Basic {self.lob_api_key}',
-                'Content-Type': 'application/json'
+                "Authorization": f"Basic {auth}",
+                "Content-Type": "application/json"
             }
             
+            api_debug_log("LOB", "REQUEST", payload)
             response = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+            api_debug_log(
+                "LOB",
+                "RESPONSE",
+                f"status={response.status_code}, body={response.text[:300]}"
+            )
             
             if response.status_code == 200:
                 data = response.json()

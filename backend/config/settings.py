@@ -186,7 +186,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
+            'format': '{levelname} {asctime} {name} {message}',
             'style': '{',
         },
     },
@@ -204,7 +204,33 @@ LOGGING = {
         'shipping_app': {
             'handlers': ['console'],
             'level': 'INFO',
-            'propagate': False,
+            'propagate': True,  # Propagate to root logger
+        },
+        # Explicitly configure all shipping_app sub-loggers to ensure they log
+        'shipping_app.serializers': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'shipping_app.serializers.shipment_serializer': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'shipping_app.services': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'shipping_app.services.address_validator': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'shipping_app.views': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
         },
     },
 }
