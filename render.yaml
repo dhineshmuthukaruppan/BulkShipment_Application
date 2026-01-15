@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: bulk-shipping-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    startCommand: python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: ALLOWED_HOSTS
+        value: bulk-shipping-backend.onrender.com,*.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://bulkshipment.vercel.app,https://bulkshipment-q99gehhfn-dhineshmuthukaruppan-9911s-projects.vercel.app
+      - key: DB_NAME
+        fromDatabase:
+          name: bulk-shipping-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: bulk-shipping-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: bulk-shipping-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: bulk-shipping-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: bulk-shipping-db
+          property: port
+
+databases:
+  - name: bulk-shipping-db
+    plan: free
+    databaseName: bulkshipment
+    user: bulkshipment_user
