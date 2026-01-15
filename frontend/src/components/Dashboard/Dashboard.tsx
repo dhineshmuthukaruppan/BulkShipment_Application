@@ -12,7 +12,6 @@ import {
 import {
   DollarOutlined,
   CheckCircleOutlined,
-  ShoppingOutlined,
   InboxOutlined,
 } from '@ant-design/icons';
 import {
@@ -27,7 +26,6 @@ import {
 } from 'recharts';
 import dayjs, { Dayjs } from 'dayjs';
 import { shipmentService } from '../../services/shipmentService';
-import { Shipment } from '../../types/shipment';
 import './Dashboard.css';
 
 const { Title } = Typography;
@@ -59,6 +57,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateRange]);
 
   const loadDashboardData = async () => {

@@ -56,6 +56,7 @@ function App() {
       root.setAttribute('data-theme', currentTheme);
     }
     document.body.style.colorScheme = currentTheme;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleMenuClick = (key: string) => {
