@@ -241,6 +241,44 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Production settings - use environment variables if available
+if os.getenv('DB_NAME'):
+    # Production: Use PostgreSQL
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME'),
+            'USER': os.getenv('DB_USER'),
+            'PASSWORD': os.getenv('DB_PASSWORD'),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+        }
+    }
+else:
+    # Development: Use SQLite
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
+# Override SECRET_KEY, DEBUG, and ALLOWED_HOSTS from environment if set
+if os.getenv('SECRET_KEY'):
+    SECRET_KEY = os.getenv('SECRET_KEY')
+
+if os.getenv('DEBUG'):
+    DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+
+if os.getenv('ALLOWED_HOSTS'):
+    ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS').split(',') if host.strip()]
+
+# Update CORS origins from environment if set
+if os.getenv('CORS_ALLOWED_ORIGINS'):
+    cors_origins = os.getenv('CORS_ALLOWED_ORIGINS')
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins.split(',') if origin.strip()]
+    CSRF_TRUSTED_ORIGINS = CORS_ALLOWED_ORIGINS.copy()
+
 # Address Validation API Keys
 # Priority: USPS Addresses 3.0 > USPS Web Tools (Legacy) > Google Maps > SmartyStreets > Lob > Basic validation
 # At least one API key should be configured for production use
