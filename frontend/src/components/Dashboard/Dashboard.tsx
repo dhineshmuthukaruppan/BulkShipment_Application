@@ -235,11 +235,11 @@ const Dashboard: React.FC = () => {
                   tick={{ fontSize: 12 }}
                 />
                 <Tooltip 
-                  formatter={(value: any, name?: string) => {
+                  formatter={(value: any, name?: string | undefined) => {
                     if (name === 'amountSpent') {
                       return [`$${Number(value).toFixed(2)}`, 'Amount Spent ($)'];
                     }
-                    return [value, 'Orders Shipped'];
+                    return [value, name || 'Orders Shipped'];
                   }}
                 />
                 <Legend 
