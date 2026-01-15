@@ -573,7 +573,20 @@ const Step2Review: React.FC = () => {
   // Handle approve action - change status to ready
   const handleApprove = async (shipment: Shipment) => {
     try {
-      const updated = await shipmentService.updateShipment(shipment.id, { status: 'ready' });
+      // When approving, set status to 'ready' AND ensure validation flags are set
+      // This prevents the backend from recalculating status back to 'needs_review'
+      const validationFlags = [...(shipment.validation_flags || [])];
+      if (!validationFlags.includes('address_reviewed')) {
+        validationFlags.push('address_reviewed');
+      }
+      if (!validationFlags.includes('package_reviewed')) {
+        validationFlags.push('package_reviewed');
+      }
+      
+      const updated = await shipmentService.updateShipment(shipment.id, { 
+        status: 'ready',
+        validation_flags: validationFlags
+      });
       
       // Fetch the latest shipment data to ensure we have the correct status
       const refreshed = await shipmentService.getShipment(shipment.id);
@@ -597,10 +610,29 @@ const Step2Review: React.FC = () => {
       setAnimatingShipments(new Set(selectedShipments));
 
       // Approve all selected shipments - update status to 'ready' explicitly
+      // Also set validation flags to prevent status recalculation
       const approvePromises = selectedShipments.map(async (id) => {
         try {
-          // Explicitly set status to 'ready'
-          const updated = await shipmentService.updateShipment(id, { status: 'ready' });
+          const shipment = shipments.find(s => s.id === id);
+          if (!shipment) {
+            throw new Error(`Shipment ${id} not found`);
+          }
+          
+          // When approving, set status to 'ready' AND ensure validation flags are set
+          // This prevents the backend from recalculating status back to 'needs_review'
+          const validationFlags = [...(shipment.validation_flags || [])];
+          if (!validationFlags.includes('address_reviewed')) {
+            validationFlags.push('address_reviewed');
+          }
+          if (!validationFlags.includes('package_reviewed')) {
+            validationFlags.push('package_reviewed');
+          }
+          
+          // Explicitly set status to 'ready' with validation flags
+          const updated = await shipmentService.updateShipment(id, { 
+            status: 'ready',
+            validation_flags: validationFlags
+          });
           return updated;
     } catch (error) {
           console.error(`Failed to approve shipment ${id}:`, error);

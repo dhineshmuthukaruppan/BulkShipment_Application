@@ -8,6 +8,7 @@ import {
   Checkbox,
   message,
   Divider,
+  Alert,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -28,6 +29,24 @@ const Step4Purchase: React.FC = () => {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
 
+  // Refresh shipments from database when component mounts to ensure we have latest status
+  useEffect(() => {
+    const refreshShipments = async () => {
+      try {
+        const allShipments = await shipmentService.getShipments();
+        // Filter to only shipments that are in the current wizard state
+        const currentShipmentIds = shipments.map(s => s.id);
+        const refreshedCurrentShipments = allShipments.filter(s => currentShipmentIds.includes(s.id));
+        if (refreshedCurrentShipments.length > 0) {
+          dispatch(setShipments(refreshedCurrentShipments));
+        }
+      } catch (error) {
+        console.error('Failed to refresh shipments:', error);
+      }
+    };
+    refreshShipments();
+  }, []);
+
   const handlePurchase = async () => {
     if (shipments.length === 0) {
       message.warning('No shipments to purchase');
@@ -36,6 +55,22 @@ const Step4Purchase: React.FC = () => {
 
     if (!termsAccepted) {
       message.warning('Please accept the terms and conditions to proceed');
+      return;
+    }
+
+    // Verify all shipments are ready and have shipping service before purchase
+    const notReady = shipments.filter(s => s.status !== 'ready');
+    const missingService = shipments.filter(s => !s.shipping_service || s.shipping_service.trim() === '');
+    
+    if (notReady.length > 0 || missingService.length > 0) {
+      const errors = [];
+      if (notReady.length > 0) {
+        errors.push(`${notReady.length} shipment(s) not ready (status: ${notReady.map(s => s.status).join(', ')})`);
+      }
+      if (missingService.length > 0) {
+        errors.push(`${missingService.length} shipment(s) missing shipping service`);
+      }
+      message.error(`Cannot purchase: ${errors.join('. ')}. Please go back to previous steps to fix.`);
       return;
     }
 
@@ -80,11 +115,35 @@ const Step4Purchase: React.FC = () => {
   };
 
 
+  // Check for shipments that aren't ready or missing shipping service
+  const notReady = shipments.filter(s => s.status !== 'ready');
+  const missingService = shipments.filter(s => !s.shipping_service || s.shipping_service.trim() === '');
+  const hasIssues = notReady.length > 0 || missingService.length > 0;
+
   return (
     <div>
       <Title level={2}>Purchase Labels</Title>
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {hasIssues && (
+          <Alert
+            message="Shipments Not Ready"
+            description={
+              <div>
+                {notReady.length > 0 && (
+                  <div>{notReady.length} shipment(s) are not ready (status: {notReady.map(s => s.status).join(', ')})</div>
+                )}
+                {missingService.length > 0 && (
+                  <div>{missingService.length} shipment(s) are missing shipping service</div>
+                )}
+                <div style={{ marginTop: 8 }}>Please go back to previous steps to fix these issues before purchasing.</div>
+              </div>
+            }
+            type="error"
+            showIcon
+            closable
+          />
+        )}
         <Card>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Label Size Selection */}

@@ -791,8 +791,46 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get shipments - only accept 'ready' status
-        # Also ensure they have a shipping service selected
+        # Get all requested shipments to check their status
+        all_requested_shipments = Shipment.objects.filter(id__in=shipment_ids)
+        
+        # Check which shipments are missing requirements
+        missing_status = []
+        missing_service = []
+        for shipment in all_requested_shipments:
+            if shipment.status != 'ready':
+                missing_status.append({
+                    'id': shipment.id,
+                    'order_number': shipment.order_number or f'ID-{shipment.id}',
+                    'status': shipment.status
+                })
+            if not shipment.shipping_service or shipment.shipping_service.strip() == '':
+                missing_service.append({
+                    'id': shipment.id,
+                    'order_number': shipment.order_number or f'ID-{shipment.id}'
+                })
+        
+        # Build detailed error message
+        if missing_status or missing_service:
+            error_parts = []
+            if missing_status:
+                status_list = ', '.join([f"{s['order_number']} (status: {s['status']})" for s in missing_status[:5]])
+                if len(missing_status) > 5:
+                    status_list += f" and {len(missing_status) - 5} more"
+                error_parts.append(f"{len(missing_status)} shipment(s) not ready: {status_list}")
+            if missing_service:
+                service_list = ', '.join([s['order_number'] for s in missing_service[:5]])
+                if len(missing_service) > 5:
+                    service_list += f" and {len(missing_service) - 5} more"
+                error_parts.append(f"{len(missing_service)} shipment(s) missing shipping service: {service_list}")
+            
+            error_message = 'No ready shipments found. ' + '. '.join(error_parts) + '. Please ensure all shipments are approved and have shipping services selected.'
+            return Response(
+                {'error': error_message},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get shipments - only accept 'ready' status with shipping service
         shipments = Shipment.objects.filter(
             id__in=shipment_ids,
             status='ready'
