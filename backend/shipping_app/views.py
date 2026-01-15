@@ -635,6 +635,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 service = updates.get('shipping_service')
                 calculator = ShippingCalculator()
                 for shipment in shipments:
+                    # Preserve current status if it's 'ready' - changing provider shouldn't change status
+                    current_status = shipment.status
+                    preserve_status = (current_status == 'ready')
+                    
                     shipment.shipping_provider = provider
                     if service:
                         shipment.shipping_service = service
@@ -664,7 +668,12 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     shipment.zone_type = breakdown['zone_type']
                     shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
                     shipment._skip_weight_calculation = True
-                    shipment.save()  # Persists to database - status will be auto-calculated
+                    
+                    # Preserve status if it was 'ready' - don't recalculate
+                    if preserve_status:
+                        shipment._skip_auto_status = True
+                    
+                    shipment.save()  # Persists to database
                 updated_count = shipments.count()
                 ShippingLogger().log_bulk_action(
                     'change_shipping_provider',
@@ -677,6 +686,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 calculator = ShippingCalculator()
                 service = updates['shipping_service']
                 for shipment in shipments:
+                    # Preserve current status if it's 'ready' - changing service shouldn't change status
+                    current_status = shipment.status
+                    preserve_status = (current_status == 'ready')
+                    
                     shipment.shipping_service = service
                     
                     # Calculate shipping cost with zone-based rates and volumetric weight
@@ -704,7 +717,12 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     shipment.zone_type = breakdown['zone_type']
                     shipment.is_intrastate = breakdown['zone_type'] == 'intrastate'
                     shipment._skip_weight_calculation = True
-                    shipment.save()  # Persists to database - status will be auto-calculated
+                    
+                    # Preserve status if it was 'ready' - don't recalculate
+                    if preserve_status:
+                        shipment._skip_auto_status = True
+                    
+                    shipment.save()  # Persists to database
                 updated_count = shipments.count()
                 ShippingLogger().log_bulk_action(
                     'change_shipping_service',
@@ -864,6 +882,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         cost = result['cost']
         breakdown = result['breakdown']
         
+        # Preserve current status if it's 'ready' - changing provider/service shouldn't change status
+        current_status = shipment.status
+        preserve_status = (current_status == 'ready')
+        
         # Update shipment with calculated values
         shipment.shipping_provider = provider
         shipment.shipping_service = service
@@ -877,6 +899,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         
         # Skip auto-calculation since we're setting values explicitly
         shipment._skip_weight_calculation = True
+        
+        # Preserve status if it was 'ready' - don't recalculate
+        if preserve_status:
+            shipment._skip_auto_status = True
+        
         shipment.save()  # Persists to database
         
         ShippingLogger().log_shipping_calculation(
