@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
 
-# Run migrations
-python manage.py migrate
+# Run migrations (non-blocking - continue even if there are issues)
+python manage.py migrate || echo "Migration warning: Some migrations may have failed, but continuing..."
 
-# Start Gunicorn (try direct command first, fallback to python -m)
-if command -v gunicorn &> /dev/null; then
-    exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000}
-else
-    exec python -m gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000}
-fi
+# Start Gunicorn
+exec python -m gunicorn config.wsgi:application \
+    --bind 0.0.0.0:${PORT:-8000} \
+    --workers 1 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info
