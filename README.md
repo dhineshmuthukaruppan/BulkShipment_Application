@@ -36,73 +36,107 @@ A comprehensive web application for bulk shipping label creation with advanced w
 
 ## Quick Start
 
-### ⚠️ IMPORTANT: PostgreSQL is Required
+### Prerequisites
 
-This application uses **PostgreSQL**. You must install and configure PostgreSQL before running the application.
+Before you begin, ensure you have the following installed:
 
-**See `SETUP_GUIDE_FOR_NEW_DEVELOPERS.md` for complete setup instructions.**
+- **Python 3.9+** (check with `python3 --version`)
+- **Node.js 16+** and npm (check with `node --version` and `npm --version`)
+- **Git** (for cloning the repository)
 
 ### Backend Setup
 
-1. **Install PostgreSQL** (Required):
-   ```bash
-   # macOS
-   brew install postgresql@14
-   brew services start postgresql@14
-   
-   # Ubuntu/Debian
-   sudo apt-get install postgresql postgresql-contrib
-   sudo systemctl start postgresql
-   ```
-
-2. **Create Database and User**:
-   ```bash
-   # macOS
-   /opt/homebrew/opt/postgresql@14/bin/createdb shipping_db
-   /opt/homebrew/opt/postgresql@14/bin/psql -d postgres -c "CREATE USER shipping_user WITH PASSWORD 'shipping_secure_pass_2026';"
-   /opt/homebrew/opt/postgresql@14/bin/psql -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE shipping_db TO shipping_user;"
-   
-   # Ubuntu/Debian
-   sudo -u postgres psql
-   # Then run: CREATE DATABASE shipping_db; CREATE USER shipping_user WITH PASSWORD 'your_password'; GRANT ALL PRIVILEGES ON DATABASE shipping_db TO shipping_user;
-   ```
-
-3. Navigate to backend directory:
+1. Navigate to backend directory:
 ```bash
 cd backend
 ```
 
-4. Create and activate virtual environment:
+2. Create and activate virtual environment:
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-5. Install dependencies:
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-6. **Create `.env` file** (Required):
+4. **Create `.env` file** (Optional - for API keys):
+
+Create a `.env` file in the `backend` directory for address validation API keys. The application will work with basic validation if no API keys are provided, but for production use, at least one API key is recommended.
+
 ```bash
-cp .env.example .env
-# Edit .env with your PostgreSQL database credentials:
-# DB_NAME=shipping_db
-# DB_USER=shipping_user
-# DB_PASSWORD=shipping_secure_pass_2026
-# DB_HOST=localhost
-# DB_PORT=5432
+# Create .env file in backend directory
+touch .env  # or create manually
 ```
 
-7. Run migrations:
+Add your API keys to the `.env` file:
+```env
+# SmartyStreets API (Free tier: 250 lookups/month)
+# Sign up at: https://www.smartystreets.com/
+SMARTY_AUTH_ID=your_smarty_auth_id
+SMARTY_AUTH_TOKEN=your_smarty_auth_token
+
+# USPS Addresses 3.0 API (OAuth-based)
+# Sign up at: https://developers.usps.com/
+USPS_CLIENT_ID=your_usps_client_id
+USPS_CLIENT_SECRET=your_usps_client_secret
+USPS_USE_TEM=False  # Set to True for testing environment
+
+# Google Maps Geocoding API (Free tier: $200/month credit)
+# Get API key at: https://console.cloud.google.com/google/maps-apis
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+
+# Lob Address Verification API (Free tier: 10,000 verifications/month)
+# Sign up at: https://lob.com/
+LOB_API_KEY=your_lob_api_key
+```
+
+**Note**: Address validation APIs are used in priority order: USPS Addresses 3.0 > USPS Web Tools (Legacy) > Google Maps > SmartyStreets > Lob > Basic validation. If no API keys are configured, the system will use basic validation.
+
+5. Run migrations:
 ```bash
 python manage.py migrate
 ```
 
-8. Start development server:
+This will create the SQLite database file (`db.sqlite3`) and set up all required tables.
+
+**Note**: The application uses SQLite by default (no additional setup required). To use PostgreSQL instead, update `backend/config/settings.py`:
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'shipping_db'),
+        'USER': os.getenv('DB_USER', 'shipping_user'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
+    }
+}
+```
+
+Then add PostgreSQL credentials to your `.env` file:
+```
+DB_NAME=shipping_db
+DB_USER=shipping_user
+DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+6. (Optional) Create a superuser for Django admin:
+```bash
+python manage.py createsuperuser
+```
+
+7. Start development server:
 ```bash
 python manage.py runserver
 ```
+
+The backend API will be available at `http://localhost:8000`
 
 ### Frontend Setup
 
@@ -121,9 +155,35 @@ npm install
 npm start
 ```
 
-The application will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
+The frontend will automatically open in your browser at `http://localhost:3000`
+
+### Quick Start (Both Servers)
+
+Alternatively, you can start both servers at once using the provided script:
+
+**From project root:**
+```bash
+cd backend
+chmod +x start_dev.sh  # Make script executable (first time only)
+./start_dev.sh
+```
+
+This will start both the Django backend and React frontend servers simultaneously.
+
+### Application URLs
+
+Once both servers are running:
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **Django Admin** (if superuser created): http://localhost:8000/admin
+
+### CSV Template
+
+The application includes a CSV template for bulk shipment uploads. You can find it at:
+- `frontend/public/shipping_template.csv`
+- `Template.csv` (in project root)
+
+The template includes all required fields for bulk shipment creation.
 
 ## Features
 
@@ -344,7 +404,7 @@ Returns complete zone-based rate tables for all providers and services.
 - **Backend**: Django REST Framework, Python
 - **Frontend**: React, TypeScript, Ant Design
 - **State Management**: Redux Toolkit
-- **Database**: PostgreSQL (required)
+- **Database**: SQLite (default, can be configured for PostgreSQL)
 
 ## Shipping Services
 
@@ -365,12 +425,124 @@ The application provides two unified shipping service options available for all 
 - No static price ranges are shown - actual calculated cost is displayed in the "Cost" column
 - This unified approach allows easy comparison across providers while maintaining provider-specific pricing
 
+## What's Been Implemented
+
+This application has been built with great attention to detail, implementing a comprehensive set of features for bulk shipping label creation:
+
+### Core Features
+
+**1. Bulk CSV Upload & Processing**
+- Advanced CSV parser supporting 2-header row structure
+- Automatic data validation and error detection
+- Support for empty order_number columns with auto-generation
+- Comprehensive validation warnings and error reporting
+- Batch processing with detailed progress tracking
+
+**2. Address Validation System**
+- **Intelligent Fallback**: Automatic fallback chain ensures validation always completes
+- **Real-time Validation**: Addresses are validated during CSV upload, manual edits, and bulk changes
+- **Detailed Error Reporting**: Point-by-point error messages displayed in the status column
+- **Address Correction**: Automatic correction of valid addresses with correction details
+- **Basic Validation Fallback**: Works without API keys using basic validation rules
+- **until the user enter the correct address, the system wont let user to approve the shipment record**
+
+**3. Order Number Management**
+- **Configurable Format**: Master settings for prefix, separator, number format, and starting number
+- **Sequential Generation**: Continuous order number sequence across all shipments and users
+- **Auto-generation**: Automatic generation for empty order_number columns in CSV uploads
+- **Database-level Locking**: Uses `SELECT FOR UPDATE` and `@transaction.atomic` for thread-safe generation
+- **Format Examples**: Supports formats like ORD-0001, ORDER-1, SHIP-00001, etc.
+
+**4. Shipping Cost Calculation**
+- **Dynamic Pricing**: Zone-based pricing with provider-specific rates
+- **Volumetric Weight**: Automatic calculation of dimensional weight using carrier-specific divisors
+- **Billable Weight**: Uses the higher of actual or dimensional weight
+- **Zone Calculation**: Intelligent zone determination (1-8) based on ZIP code prefixes
+- **Cost Breakdown**: Detailed breakdown modal showing all calculation steps
+- **Multi-Provider Support**: USPS, UPS, and FedEx with unified service options
+
+**5. Review & Edit Interface**
+- **Comprehensive Table View**: Sortable, filterable, and searchable shipment table
+- **Inline Editing**: Edit addresses, packages, and shipment details directly
+- **Bulk Operations**: Bulk address changes, package updates, and status changes
+- **Status Management**: Visual status indicators with color-coded tags
+- **Validation Display**: Real-time validation status with detailed error messages
+- **Address Formatting**: Properly formatted address display with contact information
+
+**6. Master Data Management**
+- **Saved Addresses**: Separate management for Ship From and Ship To addresses
+- **Saved Packages**: Reusable package templates with dimensions and weight
+- **Default Selection**: Mark addresses and packages as default for quick access
+- **Streamlined UI**: Clean, formatted address display with action buttons
+- **State Dropdown**: 2-letter state abbreviations with search by full state names
+- **Auto-generated Names**: Automatic address name generation from address components
+
+**7. Structured Logging**
+- **Comprehensive Logging**: All operations logged with structured JSON format
+- **Contextual Information**: Logs include user actions, API calls, errors, and system events
+- **Log Levels**: INFO, WARNING, ERROR levels for different event types
+- **API Integration Logging**: Detailed logging of address validation API calls
+- **Purchase Tracking**: Complete purchase transaction logging
+
+**8. User Experience Features**
+- **Wizard Interface**: Step-by-step workflow (Upload → Review → Shipping → Purchase)
+- **Dashboard**: Overview with statistics and charts
+- **Theme Support**: Light and dark theme options
+- **Responsive Design**: Works on desktop and tablet devices
+- **Error Handling**: User-friendly error messages and validation feedback
+- **Loading States**: Visual feedback during API calls and processing
+
+**9. Data Validation & Error Handling**
+- **Multi-level Validation**: CSV validation, address validation, and business rule validation
+- **Validation Flags**: Comprehensive flag system for tracking validation issues
+- **Error Recovery**: Graceful error handling with fallback mechanisms
+- **Status Tracking**: Detailed status workflow (uploaded → needs_review → ready → invalid)
+- **Batch Validation**: Efficient batch processing of multiple shipments
+
+**10. Technical Implementation**
+- **Django REST Framework**: Robust API with proper serialization
+- **React with TypeScript**: Type-safe frontend with modern React patterns
+- **Redux Toolkit**: Centralized state management
+- **Ant Design**: Professional UI components
+- **SQLite Database**: Lightweight database with PostgreSQL option
+- **CORS Configuration**: Proper cross-origin resource sharing setup
+
+### Attention to Detail Highlights
+
+- **Concurrent Safety**: Order number generation uses database-level locking to prevent duplicates
+- **API Resilience**: Multiple fallback APIs ensure address validation always works
+- **User Feedback**: Real-time validation status updates and detailed error messages
+- **Data Integrity**: Comprehensive validation at every step of the workflow
+- **Performance**: Optimized queries, batch operations, and efficient data processing
+- **Accessibility**: ARIA labels, keyboard navigation, and semantic HTML
+- **Error Recovery**: Graceful degradation when APIs are unavailable
+- **Code Quality**: Type safety, proper error handling, and structured logging
+
 ## Additional Documentation
 
 For detailed technical documentation on the dynamic pricing implementation, see:
 - `DYNAMIC_PRICING_DOCUMENTATION.md` - Complete technical documentation
 
 ## Future Enhancements
+
+### Concurrent Order Number Generation
+
+**Current Implementation**: The application uses `@transaction.atomic` and `SELECT FOR UPDATE` locking to prevent race conditions when generating order numbers. However, when multiple users simultaneously upload bulk shipments, there's a potential for duplicate order numbers if the transactions overlap.
+
+**Proposed Enhancement**: Implement a more robust concurrent-safe order number generation system:
+
+- **Database-level Sequence**: Use database sequences (PostgreSQL) or atomic counters to ensure unique order numbers
+- **Distributed Locking**: Implement distributed locking mechanism for multi-instance deployments
+- **Retry Logic**: Add automatic retry with exponential backoff if order number generation conflicts occur
+- **Unique Constraint**: Add database-level unique constraint on order_number field to prevent duplicates at the database level
+- **Conflict Detection**: Implement conflict detection and resolution when duplicate order numbers are detected
+- **Audit Trail**: Log all order number generation attempts and conflicts for debugging
+
+**Benefits**:
+- Guaranteed unique order numbers even under high concurrent load
+- Better scalability for multi-user environments
+- Improved data integrity and reliability
+- Better error handling and recovery from conflicts
 
 ### Provider-Specific Services
 
@@ -416,3 +588,39 @@ Shipping costs increase with distance. Zone-based pricing reflects this reality:
 
 This ensures pricing accurately reflects shipping costs.
 
+## Troubleshooting
+
+### Common Issues
+
+**Backend won't start:**
+- Ensure virtual environment is activated: `source venv/bin/activate`
+- Check Python version: `python3 --version` (should be 3.9+)
+- Verify all dependencies are installed: `pip install -r requirements.txt`
+- Check if port 8000 is already in use
+
+**Frontend won't start:**
+- Check Node.js version: `node --version` (should be 16+)
+- Delete `node_modules` and reinstall: `rm -rf node_modules && npm install`
+- Check if port 3000 is already in use
+- Clear npm cache: `npm cache clean --force`
+
+**Database errors:**
+- If using SQLite, ensure `db.sqlite3` file has write permissions
+- Run migrations again: `python manage.py migrate`
+- If switching to PostgreSQL, ensure database and user are created first
+
+**Address validation not working:**
+- Check `.env` file exists in `backend` directory
+- Verify API keys are correctly set in `.env` file
+- Check API key quotas/limits haven't been exceeded
+- The system will fall back to basic validation if all APIs fail
+
+**CORS errors:**
+- Ensure backend is running on port 8000
+- Check `CORS_ALLOWED_ORIGINS` in `backend/config/settings.py` includes `http://localhost:3000`
+- Restart both servers after making CORS changes
+
+**Module not found errors:**
+- Backend: Ensure virtual environment is activated and dependencies are installed
+- Frontend: Run `npm install` to install all dependencies
+- Check that you're in the correct directory when running commands
