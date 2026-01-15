@@ -32,37 +32,26 @@ import {
   saveDraft,
 } from '../../store/slices/wizardSlice';
 import { shipmentService } from '../../services/shipmentService';
-import { Shipment, CostBreakdown } from '../../types/shipment';
+import { Shipment, CostBreakdown, TariffChartData } from '../../types/shipment';
 import { useTheme } from '../../contexts/ThemeContext';
 import TariffChartModal from '../common/TariffChartModal';
 import CostBreakdownModal from '../common/CostBreakdownModal';
 
 const { Title, Text } = Typography;
 
-// Shipping providers and their services
+// Shipping providers
 const SHIPPING_PROVIDERS = [
   { value: 'USPS', label: 'USPS' },
   { value: 'FedEx', label: 'FedEx' },
   { value: 'UPS', label: 'UPS' },
 ];
 
-const SHIPPING_SERVICES: Record<string, Array<{ value: string; label: string; priceRange: string }>> = {
-  USPS: [
-    { value: 'Priority Mail', label: 'Priority Mail', priceRange: '$4.00 - $8.00' },
-    { value: 'Ground Shipping', label: 'Ground Shipping', priceRange: '$2.00 - $5.00' },
-    { value: 'First Class', label: 'First Class', priceRange: '$3.00 - $6.00' },
-  ],
-  FedEx: [
-    { value: 'FedEx Ground', label: 'FedEx Ground', priceRange: '$5.00 - $10.00' },
-    { value: 'FedEx Express', label: 'FedEx Express', priceRange: '$15.00 - $25.00' },
-    { value: 'FedEx Overnight', label: 'FedEx Overnight', priceRange: '$25.00 - $40.00' },
-  ],
-  UPS: [
-    { value: 'UPS Ground', label: 'UPS Ground', priceRange: '$5.00 - $10.00' },
-    { value: 'UPS Next Day Air', label: 'UPS Next Day Air', priceRange: '$20.00 - $35.00' },
-    { value: 'UPS 2nd Day Air', label: 'UPS 2nd Day Air', priceRange: '$12.00 - $20.00' },
-  ],
-};
+// Unified service options for all providers (tariffs vary by provider)
+// Services will be loaded dynamically from tariff chart
+const UNIFIED_SERVICES = [
+  { value: 'Priority Mail', label: 'Priority Mail' },
+  { value: 'Ground Shipping', label: 'Ground Shipping' },
+];
 
 const Step3Shipping: React.FC = () => {
   const { theme } = useTheme();
@@ -77,6 +66,25 @@ const Step3Shipping: React.FC = () => {
   const [bulkServiceModalVisible, setBulkServiceModalVisible] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string>('');
   const [selectedService, setSelectedService] = useState<string>('');
+  const [tariffData, setTariffData] = useState<TariffChartData | null>(null);
+  const [loadingTariff, setLoadingTariff] = useState(false);
+
+  // Load tariff chart data on component mount
+  useEffect(() => {
+    const loadTariffData = async () => {
+      setLoadingTariff(true);
+      try {
+        const data = await shipmentService.getTariffChart();
+        setTariffData(data);
+      } catch (error) {
+        console.error('Failed to load tariff chart:', error);
+        message.error('Failed to load tariff chart data');
+      } finally {
+        setLoadingTariff(false);
+      }
+    };
+    loadTariffData();
+  }, []);
 
   useEffect(() => {
     dispatch(calculateTotalCost());
@@ -84,14 +92,14 @@ const Step3Shipping: React.FC = () => {
 
   const handleProviderChange = async (shipmentId: number, provider: string) => {
     try {
-      // When provider changes, reset to first service of that provider
-      const firstService = SHIPPING_SERVICES[provider]?.[0]?.value || 'Ground Shipping';
+      // When provider changes, reset to first service (Ground Shipping is typically cheaper)
+      const firstService = UNIFIED_SERVICES[0]?.value || 'Ground Shipping';
       await shipmentService.bulkUpdate([shipmentId], { 
         shipping_provider: provider,
         shipping_service: firstService 
       });
       
-      // Recalculate shipping with new provider
+      // Recalculate shipping with new provider - this uses tariff chart rates
       await shipmentService.calculateShipping(shipmentId, firstService, provider);
       
       // Fetch only the updated shipment instead of all shipments
@@ -107,17 +115,23 @@ const Step3Shipping: React.FC = () => {
   const handleServiceChange = async (shipmentId: number, service: string) => {
     try {
       const shipment = shipments.find(s => s.id === shipmentId);
+      const provider = shipment?.shipping_provider || 'USPS';
+      
+      // Update service first
+      await shipmentService.bulkUpdate([shipmentId], { shipping_service: service });
+      
+      // Recalculate shipping cost based on tariff chart - this will use zone-based rates
       const result = await shipmentService.calculateShipping(
         shipmentId, 
         service,
-        shipment?.shipping_provider
+        provider
       );
       
       // Fetch only the updated shipment instead of all shipments
       const updated = await shipmentService.getShipment(shipmentId);
       dispatch(updateShipment(updated));
       dispatch(calculateTotalCost());
-      message.success('Shipping cost updated');
+      message.success('Shipping service updated - cost recalculated based on tariff');
     } catch (error) {
       message.error('Failed to update shipping service');
     }
@@ -155,13 +169,14 @@ const Step3Shipping: React.FC = () => {
     }
     
     try {
-      const firstService = SHIPPING_SERVICES[selectedProvider]?.[0]?.value || 'Ground Shipping';
+      // Use first unified service (Ground Shipping)
+      const firstService = UNIFIED_SERVICES[0]?.value || 'Ground Shipping';
       await shipmentService.bulkUpdate(selectedShipments, { 
         shipping_provider: selectedProvider,
         shipping_service: firstService 
       });
       
-      // Recalculate shipping for all selected shipments
+      // Recalculate shipping for all selected shipments using tariff chart rates
       await Promise.all(
         selectedShipments.map(id => 
           shipmentService.calculateShipping(id, firstService, selectedProvider)
@@ -200,13 +215,17 @@ const Step3Shipping: React.FC = () => {
       const selectedShipmentData = shipments.filter(s => selectedShipments.includes(s.id));
       const mostCommonProvider = selectedShipmentData[0]?.shipping_provider || 'USPS';
       
+      // Update service for all selected shipments
       await shipmentService.bulkUpdate(selectedShipments, { shipping_service: selectedService });
       
-      // Recalculate shipping for all selected shipments
+      // Recalculate shipping for all selected shipments using tariff chart rates
+      // Each shipment may have different providers, so use their individual providers
       await Promise.all(
-        selectedShipments.map(id => 
-          shipmentService.calculateShipping(id, selectedService, mostCommonProvider)
-        )
+        selectedShipments.map(id => {
+          const shipment = shipments.find(s => s.id === id);
+          const provider = shipment?.shipping_provider || mostCommonProvider;
+          return shipmentService.calculateShipping(id, selectedService, provider);
+        })
       );
       
       // Fetch only the updated shipments instead of all shipments
@@ -222,7 +241,7 @@ const Step3Shipping: React.FC = () => {
       dispatch(setShipments(refreshedShipments));
       dispatch(clearSelectedShipments());
       dispatch(calculateTotalCost());
-      message.success(`Updated ${selectedShipments.length} shipments`);
+      message.success(`Updated ${selectedShipments.length} shipments - costs recalculated based on tariff`);
       setBulkServiceModalVisible(false);
       setSelectedService('');
     } catch (error) {
@@ -241,14 +260,65 @@ const Step3Shipping: React.FC = () => {
     }
   };
 
+  // Get services for a provider from tariff chart data
   const getServicesForProvider = (provider: string) => {
-    return SHIPPING_SERVICES[provider] || SHIPPING_SERVICES['USPS'];
+    if (!tariffData) {
+      // Fallback to unified services if tariff not loaded yet
+      return UNIFIED_SERVICES;
+    }
+    
+    const providerRates = tariffData.providers[provider as keyof typeof tariffData.providers];
+    if (!providerRates) {
+      return UNIFIED_SERVICES;
+    }
+    
+    // Extract service names from tariff chart
+    const services = Object.keys(providerRates).map(serviceName => ({
+      value: serviceName,
+      label: serviceName,
+    }));
+    
+    return services.length > 0 ? services : UNIFIED_SERVICES;
   };
 
   const getMostAffordableService = (provider: string) => {
-    const services = getServicesForProvider(provider);
-    // Return the first service (they should be sorted by price)
-    return services[0]?.value || 'Ground Shipping';
+    // Ground Shipping is typically more affordable
+    return 'Ground Shipping';
+  };
+  
+  // Get price range for a service from tariff chart (for display)
+  const getServicePriceRange = (provider: string, service: string): string => {
+    if (!tariffData) {
+      return 'Price varies';
+    }
+    
+    const providerRates = tariffData.providers[provider as keyof typeof tariffData.providers];
+    if (!providerRates || !providerRates[service]) {
+      return 'Price varies';
+    }
+    
+    const serviceRates = providerRates[service];
+    const zones = serviceRates.zones;
+    
+    if (!zones || Object.keys(zones).length === 0) {
+      return 'Price varies';
+    }
+    
+    // Calculate min and max prices across all zones
+    // For a 1 lb package (16 oz) as example
+    const zoneNumbers = Object.keys(zones).map(Number);
+    const prices = zoneNumbers.map(zone => {
+      const rate = zones[zone];
+      const basePrice = parseFloat(rate.base_price);
+      const perOzRate = parseFloat(rate.per_oz_rate);
+      // Example: 1 lb = 16 oz
+      return basePrice + (16 * perOzRate);
+    });
+    
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    
+    return `$${minPrice.toFixed(2)} - $${maxPrice.toFixed(2)}`;
   };
 
   const columns: ColumnsType<Shipment> = [
@@ -295,10 +365,14 @@ const Step3Shipping: React.FC = () => {
             value={record.shipping_service}
             style={{ width: '100%' }}
             onChange={(value) => handleServiceChange(record.id, value)}
-            options={services.map(s => ({
-              label: `${s.label} (${s.priceRange})`,
-              value: s.value,
-            }))}
+            loading={loadingTariff}
+            options={services.map(s => {
+              const priceRange = getServicePriceRange(provider, s.value);
+              return {
+                label: `${s.label} (${priceRange})`,
+                value: s.value,
+              };
+            })}
           />
         );
       },
@@ -549,10 +623,13 @@ const Step3Shipping: React.FC = () => {
                 label: 'Switch to the most affordable rate available', 
                 value: getMostAffordableService(mostCommonProvider) 
               },
-              ...services.map(s => ({
-                label: `${s.label} (${s.priceRange})`,
-                value: s.value,
-              }))
+              ...services.map(s => {
+                const priceRange = getServicePriceRange(mostCommonProvider, s.value);
+                return {
+                  label: `${s.label} (${priceRange})`,
+                  value: s.value,
+                };
+              })
             ];
           })()}
         />

@@ -22,7 +22,8 @@ from shipping_app.services import (
     CSVParser,
     AddressValidator,
     ShippingCalculator,
-    ShippingLogger
+    ShippingLogger,
+    OrderNumberGenerator
 )
 
 # US state codes for country-aware validation
@@ -920,7 +921,13 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['post'])
     def purchase(self, request):
-        """Purchase labels for selected shipments"""
+        """
+        Purchase labels for selected shipments.
+        
+        IMPORTANT: Generates order numbers atomically for shipments with empty order_number
+        fields before creating labels. Uses database transactions with SELECT FOR UPDATE
+        to prevent race conditions when multiple users purchase simultaneously.
+        """
         shipment_ids = request.data.get('shipment_ids', [])
         label_size = request.data.get('label_size', 'letter')
         
@@ -941,6 +948,26 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': 'No ready shipments found. Please ensure shipments are valid and have shipping services selected.'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate order numbers for shipments with empty order_number fields
+        # This happens atomically using database transactions to prevent race conditions
+        shipment_id_list = list(shipments.values_list('id', flat=True))
+        try:
+            order_generator = OrderNumberGenerator()
+            order_number_mapping = order_generator.generate_order_numbers_for_shipments(shipment_id_list)
+            
+            # Refresh shipments from database to get updated order numbers
+            # Only refresh the shipments we originally selected (ready status, with shipping service)
+            shipments = Shipment.objects.filter(
+                id__in=shipment_id_list,
+                status='ready'
+            ).exclude(shipping_service='')
+        except Exception as e:
+            ShippingLogger().log_error('order_number_generation_error', str(e))
+            return Response(
+                {'error': f'Failed to generate order numbers: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
         calculator = ShippingCalculator()
@@ -971,7 +998,8 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             'labels_created': len(labels),
             'total_cost': float(total_cost),
             'label_size': label_size,
-            'tracking_numbers': [label.tracking_number for label in labels]
+            'tracking_numbers': [label.tracking_number for label in labels],
+            'order_numbers_generated': len(order_number_mapping) if order_number_mapping else 0
         })
     
     @action(detail=False, methods=['get'])
