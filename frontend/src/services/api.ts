@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? 'https://bulk-shipping-backend.onrender.com/api' : 'http://localhost:8000/api');
+// Export API_URL so other services can use it
+export const API_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? 'https://bulk-shipping-backend.onrender.com/api' : 'http://localhost:8000/api');
 
 const api = axios.create({
   baseURL: API_URL,

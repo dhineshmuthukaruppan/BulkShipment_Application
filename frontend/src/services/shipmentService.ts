@@ -1,8 +1,6 @@
-import api from './api';
+import api, { API_URL } from './api';
 import axios from 'axios';
 import { Shipment, SavedAddress, SavedPackage, TariffChartData, CostBreakdown } from '../types/shipment';
-
-const API_URL = process.env.REACT_APP_API_URL || (process.env.NODE_ENV === 'production' ? 'https://bulk-shipping-backend.onrender.com/api' : 'http://localhost:8000/api');
 
 export const shipmentService = {
   // Upload CSV
