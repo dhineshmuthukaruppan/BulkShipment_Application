@@ -130,8 +130,39 @@ export const shipmentService = {
 
   // Get tariff chart
   getTariffChart: async (): Promise<TariffChartData> => {
-    const response = await api.get('/shipments/get_tariff_chart/');
-    return response.data;
+    try {
+      const response = await api.get('/shipments/get_tariff_chart/');
+      const data = response.data;
+      // Ensure the response has the expected structure
+      if (!data || !data.providers) {
+        console.warn('Invalid tariff chart data structure:', data);
+        return {
+          providers: {},
+          zone_info: {
+            intrastate_zones: [],
+            interstate_zones: [],
+          },
+        };
+      }
+      // Ensure zone_info exists
+      if (!data.zone_info) {
+        data.zone_info = {
+          intrastate_zones: [],
+          interstate_zones: [],
+        };
+      }
+      return data;
+    } catch (error: any) {
+      console.error('Failed to fetch tariff chart:', error);
+      // Return empty structure on error
+      return {
+        providers: {},
+        zone_info: {
+          intrastate_zones: [],
+          interstate_zones: [],
+        },
+      };
+    }
   },
 
   // Test address validation

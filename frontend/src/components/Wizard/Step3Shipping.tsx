@@ -262,7 +262,7 @@ const Step3Shipping: React.FC = () => {
 
   // Get services for a provider from tariff chart data
   const getServicesForProvider = (provider: string) => {
-    if (!tariffData) {
+    if (!tariffData || !tariffData.providers) {
       // Fallback to unified services if tariff not loaded yet
       return UNIFIED_SERVICES;
     }
@@ -288,7 +288,7 @@ const Step3Shipping: React.FC = () => {
   
   // Get price range for a service from tariff chart (for display)
   const getServicePriceRange = (provider: string, service: string): string => {
-    if (!tariffData) {
+    if (!tariffData || !tariffData.providers) {
       return 'Price varies';
     }
     
@@ -298,7 +298,7 @@ const Step3Shipping: React.FC = () => {
     }
     
     const serviceRates = providerRates[service];
-    const zones = serviceRates.zones;
+    const zones = serviceRates?.zones || {};
     
     if (!zones || Object.keys(zones).length === 0) {
       return 'Price varies';

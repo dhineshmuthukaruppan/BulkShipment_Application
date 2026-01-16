@@ -206,6 +206,17 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
 
       {tariffData && !loading && (
         <div>
+          {(!tariffData.providers || !tariffData.zone_info) && (
+            <Alert
+              message="Incomplete Data"
+              description="Tariff chart data is incomplete. Please try refreshing or contact support."
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          )}
+          {tariffData.providers && tariffData.zone_info && (
+            <>
           <div style={{ marginBottom: 16, padding: '12px', background: theme === 'dark' ? '#1f1f1f' : '#f5f5f5', borderRadius: 4 }}>
             <Space>
               <InfoCircleOutlined />
@@ -224,14 +235,14 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
           <Tabs
             defaultActiveKey="USPS"
             items={[
-              tariffData.providers.USPS && {
+              tariffData.providers?.USPS && {
                 key: 'USPS',
                 label: 'USPS',
                 children: (
                   <Table
                     columns={createColumns(
-                      tariffData.zone_info.intrastate_zones,
-                      tariffData.zone_info.interstate_zones
+                      tariffData.zone_info.intrastate_zones || [],
+                      tariffData.zone_info.interstate_zones || []
                     )}
                     dataSource={createTableData(tariffData.providers.USPS)}
                     pagination={false}
@@ -245,14 +256,14 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
                   />
                 ),
               },
-              tariffData.providers.UPS && {
+              tariffData.providers?.UPS && {
                 key: 'UPS',
                 label: 'UPS',
                 children: (
                   <Table
                     columns={createColumns(
-                      tariffData.zone_info.intrastate_zones,
-                      tariffData.zone_info.interstate_zones
+                      tariffData.zone_info.intrastate_zones || [],
+                      tariffData.zone_info.interstate_zones || []
                     )}
                     dataSource={createTableData(tariffData.providers.UPS)}
                     pagination={false}
@@ -266,14 +277,14 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
                   />
                 ),
               },
-              tariffData.providers.FedEx && {
+              tariffData.providers?.FedEx && {
                 key: 'FedEx',
                 label: 'FedEx',
                 children: (
                   <Table
                     columns={createColumns(
-                      tariffData.zone_info.intrastate_zones,
-                      tariffData.zone_info.interstate_zones
+                      tariffData.zone_info.intrastate_zones || [],
+                      tariffData.zone_info.interstate_zones || []
                     )}
                     dataSource={createTableData(tariffData.providers.FedEx)}
                     pagination={false}
@@ -289,6 +300,8 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
               },
             ].filter(Boolean) as TabsProps['items']}
           />
+          </>
+          )}
 
           <style>{`
             .ant-table-thead > tr > th {
@@ -325,7 +338,7 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
             .ant-table-tbody > tr > td:nth-child(2),
             .ant-table-tbody > tr > td:nth-child(3),
             .ant-table-tbody > tr > td:nth-child(4) {
-              background-color: ${getZoneBackgroundColor(1, tariffData.zone_info.intrastate_zones)} !important;
+              background-color: ${getZoneBackgroundColor(1, tariffData?.zone_info?.intrastate_zones || [])} !important;
             }
             
             .ant-table-tbody > tr > td:nth-child(5),
@@ -333,7 +346,7 @@ const TariffChartModal: React.FC<TariffChartModalProps> = ({ visible, onClose })
             .ant-table-tbody > tr > td:nth-child(7),
             .ant-table-tbody > tr > td:nth-child(8),
             .ant-table-tbody > tr > td:nth-child(9) {
-              background-color: ${getZoneBackgroundColor(4, tariffData.zone_info.intrastate_zones)} !important;
+              background-color: ${getZoneBackgroundColor(4, tariffData?.zone_info?.intrastate_zones || [])} !important;
             }
           `}</style>
         </div>
