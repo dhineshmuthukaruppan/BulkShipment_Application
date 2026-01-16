@@ -65,6 +65,19 @@ const Dashboard: React.FC = () => {
     try {
       const allShipments = await shipmentService.getShipments();
       
+      // Ensure allShipments is an array
+      if (!Array.isArray(allShipments)) {
+        console.error('getShipments did not return an array:', allShipments);
+        setDailyData([]);
+        setMetrics({
+          totalSpent: 0,
+          ordersShipped: 0,
+          averageOrderValue: 0,
+          totalShipments: 0,
+        });
+        return;
+      }
+      
       // Filter by date range if selected
       let filteredShipments = allShipments;
       if (dateRange[0] && dateRange[1]) {

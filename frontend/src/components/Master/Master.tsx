@@ -104,14 +104,24 @@ const Master: React.FC<MasterProps> = () => {
         // Load addresses separately by type
         const fromAddresses = await savedAddressService.getAll('from');
         const toAddresses = await savedAddressService.getAll('to');
-        setShipFromAddresses(fromAddresses);
-        setShipToAddresses(toAddresses);
+        // Ensure arrays before setting state
+        setShipFromAddresses(Array.isArray(fromAddresses) ? fromAddresses : []);
+        setShipToAddresses(Array.isArray(toAddresses) ? toAddresses : []);
       } else if (activeTab === 'packages') {
         const packagesData = await savedPackageService.getAll();
-        setPackages(packagesData);
+        // Ensure array before setting state
+        setPackages(Array.isArray(packagesData) ? packagesData : []);
       }
     } catch (error) {
+      console.error('Failed to load data:', error);
       message.error('Failed to load data');
+      // Set empty arrays on error
+      if (activeTab === 'ship-from' || activeTab === 'ship-to') {
+        setShipFromAddresses([]);
+        setShipToAddresses([]);
+      } else if (activeTab === 'packages') {
+        setPackages([]);
+      }
     } finally {
       setLoading(false);
     }

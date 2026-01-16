@@ -1653,7 +1653,7 @@ const Step2Review: React.FC = () => {
                 setBulkActionModal(null);
               }}
             >
-              {savedAddresses.map(addr => {
+              {Array.isArray(savedAddresses) && savedAddresses.map(addr => {
                 const fullAddress = [
                   addr.name,
                   addr.address,
@@ -1748,7 +1748,7 @@ const Step2Review: React.FC = () => {
                 setBulkActionModal(null);
               }}
             >
-              {savedToAddresses.map(addr => {
+              {Array.isArray(savedToAddresses) && savedToAddresses.map(addr => {
                 const fullAddress = [
                   addr.name,
                   addr.address,
@@ -1803,7 +1803,7 @@ const Step2Review: React.FC = () => {
             setBulkActionModal(null);
           }}
         >
-          {savedPackages.map(pkg => {
+          {Array.isArray(savedPackages) && savedPackages.map(pkg => {
             // Format weight as per PRD: "1 lb 0 oz" format
             const weightText = `${Math.floor(pkg.weight_lbs)} lb ${Math.floor(pkg.weight_oz)} oz`;
             const packageText = `${pkg.name} - ${pkg.length}x${pkg.width}x${pkg.height} in, ${weightText}`;

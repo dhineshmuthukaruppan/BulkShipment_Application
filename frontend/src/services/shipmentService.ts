@@ -46,8 +46,24 @@ export const shipmentService = {
 
   // Get all shipments
   getShipments: async (): Promise<Shipment[]> => {
-    const response = await api.get('/shipments/');
-    return response.data;
+    try {
+      const response = await api.get('/shipments/');
+      // Ensure we always return an array
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      // Handle case where API returns an object with results property
+      if (response.data && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      // Return empty array if data is not in expected format
+      console.warn('API response is not an array:', response.data);
+      return [];
+    } catch (error: any) {
+      console.error('Failed to fetch shipments:', error);
+      // Return empty array on error instead of throwing
+      return [];
+    }
   },
 
   // Get single shipment
@@ -162,9 +178,22 @@ export const shipmentService = {
 
 export const savedAddressService = {
   getAll: async (addressType?: 'from' | 'to'): Promise<SavedAddress[]> => {
-    const params = addressType ? { address_type: addressType } : {};
-    const response = await api.get('/saved-addresses/', { params });
-    return response.data;
+    try {
+      const params = addressType ? { address_type: addressType } : {};
+      const response = await api.get('/saved-addresses/', { params });
+      // Ensure we always return an array
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      console.warn('API response is not an array:', response.data);
+      return [];
+    } catch (error: any) {
+      console.error('Failed to fetch saved addresses:', error);
+      return [];
+    }
   },
   getById: async (id: number): Promise<SavedAddress> => {
     const response = await api.get(`/saved-addresses/${id}/`);
@@ -189,8 +218,21 @@ export const savedAddressService = {
 
 export const savedPackageService = {
   getAll: async (): Promise<SavedPackage[]> => {
-    const response = await api.get('/saved-packages/');
-    return response.data;
+    try {
+      const response = await api.get('/saved-packages/');
+      // Ensure we always return an array
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      console.warn('API response is not an array:', response.data);
+      return [];
+    } catch (error: any) {
+      console.error('Failed to fetch saved packages:', error);
+      return [];
+    }
   },
   getById: async (id: number): Promise<SavedPackage> => {
     const response = await api.get(`/saved-packages/${id}/`);

@@ -38,7 +38,8 @@ const wizardSlice = createSlice({
       state.currentStep = action.payload;
     },
     setShipments: (state, action: PayloadAction<Shipment[]>) => {
-      state.shipments = action.payload;
+      // Ensure shipments is always an array
+      state.shipments = Array.isArray(action.payload) ? action.payload : [];
     },
     addShipment: (state, action: PayloadAction<Shipment>) => {
       state.shipments.push(action.payload);
@@ -108,8 +109,9 @@ const wizardSlice = createSlice({
     loadDraft: (state, action: PayloadAction<string>) => {
       const draft = state.drafts.find(d => d.id === action.payload);
       if (draft) {
-        state.shipments = [...draft.shipments];
-        state.selectedShipments = [...draft.selectedShipments];
+        // Ensure shipments is always an array
+        state.shipments = Array.isArray(draft.shipments) ? [...draft.shipments] : [];
+        state.selectedShipments = Array.isArray(draft.selectedShipments) ? [...draft.selectedShipments] : [];
         state.totalCost = draft.totalCost;
         state.currentStep = draft.step;
       }
