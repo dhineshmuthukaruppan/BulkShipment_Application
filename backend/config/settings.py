@@ -148,7 +148,12 @@ MEDIA_ROOT = BASE_DIR / 'media'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://bulk-shipment-ap-git-46461e-dhineshmuthukaruppan-9911s-projects.vercel.app",
+    "https://bulk-shipment-application-kau0pm0qw.vercel.app",
+    "https://bulk-shipment-application.vercel.app",
 ]
+# Allow all Vercel preview deployments
+CORS_ALLOW_ALL_ORIGINS = False  # Set to True for development if needed
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -178,6 +183,9 @@ CORS_ALLOW_HEADERS = [
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://bulk-shipment-ap-git-46461e-dhineshmuthukaruppan-9911s-projects.vercel.app",
+    "https://bulk-shipment-application-kau0pm0qw.vercel.app",
+    "https://bulk-shipment-application.vercel.app",
 ]
 
 # Logging configuration
