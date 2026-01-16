@@ -252,11 +252,14 @@ const Step3Shipping: React.FC = () => {
   const handleDelete = async (id: number) => {
     try {
       await shipmentService.deleteShipment(id);
+      // Remove from Redux state even if it was already deleted (404 handled in service)
       dispatch(removeShipment(id));
       dispatch(calculateTotalCost());
       message.success('Shipment deleted');
-    } catch (error) {
-      message.error('Failed to delete shipment');
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to delete shipment';
+      message.error(errorMessage);
     }
   };
 

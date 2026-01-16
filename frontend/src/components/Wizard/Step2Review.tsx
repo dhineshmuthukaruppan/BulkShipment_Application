@@ -205,11 +205,14 @@ const Step2Review: React.FC = () => {
   const handleDelete = async (id: number) => {
     try {
       await shipmentService.deleteShipment(id);
+      // Remove from Redux state even if it was already deleted (404 handled in service)
       dispatch(removeShipment(id));
       setDeleteConfirmId(null);
       message.success('Shipment deleted');
-    } catch (error) {
-      message.error('Failed to delete shipment');
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to delete shipment';
+      message.error(errorMessage);
       setDeleteConfirmId(null);
     }
   };
@@ -220,12 +223,30 @@ const Step2Review: React.FC = () => {
 
   const handleBulkDelete = async () => {
     try {
-      await Promise.all(selectedShipments.map(id => shipmentService.deleteShipment(id)));
+      // Use Promise.allSettled to handle partial failures gracefully
+      const results = await Promise.allSettled(
+        selectedShipments.map(id => shipmentService.deleteShipment(id))
+      );
+      
+      // Count successful deletions
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+      
+      // Remove all from Redux state (even if some failed - they may have been already deleted)
       selectedShipments.forEach(id => dispatch(removeShipment(id)));
       dispatch(clearSelectedShipments());
-      message.success(`Deleted ${selectedShipments.length} shipments`);
-    } catch (error) {
-      message.error('Failed to delete shipments');
+      
+      if (failed === 0) {
+        message.success(`Deleted ${successful} shipments`);
+      } else if (successful > 0) {
+        message.warning(`Deleted ${successful} shipments, ${failed} failed`);
+      } else {
+        message.error('Failed to delete shipments');
+      }
+    } catch (error: any) {
+      console.error('Bulk delete error:', error);
+      const errorMessage = error?.response?.data?.error || error?.message || 'Failed to delete shipments';
+      message.error(errorMessage);
     }
   };
 

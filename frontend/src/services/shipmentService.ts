@@ -80,7 +80,17 @@ export const shipmentService = {
 
   // Delete shipment
   deleteShipment: async (id: number): Promise<void> => {
-    await api.delete(`/shipments/${id}/`);
+    try {
+      await api.delete(`/shipments/${id}/`);
+    } catch (error: any) {
+      // If shipment doesn't exist (404), treat as success (already deleted)
+      if (error.response && error.response.status === 404) {
+        console.warn(`Shipment ${id} not found (may have been already deleted)`);
+        return; // Treat as success
+      }
+      // Re-throw other errors
+      throw error;
+    }
   },
 
   // Bulk update
